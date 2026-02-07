@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using WinStrideApi.Data;
 using WinStrideApi.Models;
+using Microsoft.EntityFrameworkCore;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -10,11 +11,20 @@ namespace WinStride_Api.Controllers
     [ApiController]
     public class EventController : ControllerBase
     {
+
+        private readonly ApplicationDbContext _context;
+
+        public EventController(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
         // GET: api/<EventController>
         [HttpGet]
-        public IEnumerable<string> Get()
+        public async Task<ActionResult<IEnumerable<WinEvent>>> GetWinEvents()
         {
-            return new string[] { "value1", "value2" };
+            // This fetches all records from the WinEvents table
+            return await _context.WinEvents.ToListAsync();
         }
 
         // GET api/<EventController>/5
