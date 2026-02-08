@@ -3,8 +3,6 @@ using WinStrideApi.Data;
 using WinStrideApi.Models;
 using Microsoft.EntityFrameworkCore;
 
-// For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
-
 namespace WinStride_Api.Controllers
 {
     [Route("api/[controller]")]
@@ -21,23 +19,49 @@ namespace WinStride_Api.Controllers
 
         // GET: api/<EventController>
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<WinEvent>>> GetWinEvents()
+        public async Task<ActionResult<IEnumerable<WinEvent>>> GetWinEvents(
+            [FromQuery] int? id,
+            [FromQuery] int? eventId,
+            [FromQuery] string? machineName,
+            [FromQuery] string? logName,
+            [FromQuery] string? level,
+            [FromQuery] DateTime? startTime,
+            [FromQuery] DateTime? endTime)
         {
-            // This fetches all records from the WinEvents table
-            return await _context.WinEvents.ToListAsync();
-        }
+            var query = _context.WinEvents.AsQueryable();
 
-        // GET api/<EventController>/5
-        [HttpGet("{id}")]
-        public string Get(int id)
-        {
-            return "value";
-        }
+            if (id.HasValue)
+            {
+                query = query.Where(e => e.Id == id);
+            }
+            if (eventId.HasValue)
+            {
+                query = query.Where(e => e.EventId == eventId);
+            }
+            if (!string.IsNullOrEmpty(machineName))
+            {
+                query = query.Where(e => e.MachineName.Contains(machineName));
+            }
+            if (!string.IsNullOrEmpty(logName))
+            {
+                query = query.Where(e => e.LogName == logName);
+            }
+            if (!string.IsNullOrEmpty(level))
+            {
+                query = query.Where(e => e.Level == level);
+            }
+            if (startTime.HasValue)
+            {
+                var utcStart = DateTime.SpecifyKind(startTime.Value, DateTimeKind.Utc);
+                query = query.Where(e => e.TimeCreated >= utcStart);
+            }
+            if (endTime.HasValue)
+            {
+                var utcEnd = DateTime.SpecifyKind(endTime.Value, DateTimeKind.Utc);
+                query = query.Where(e => e.TimeCreated <= utcEnd);
+            }
 
-        // POST api/<EventController>
-        [HttpPost]
-        public void Post([FromBody] string value)
-        {
+            return await query.ToListAsync();
         }
 
         // PUT api/<EventController>/5
