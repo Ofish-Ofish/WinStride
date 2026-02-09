@@ -17,7 +17,19 @@ namespace WinStride_Api.Controllers
             _context = context;
         }
 
-        // GET: api/<EventController>
+        [HttpGet("health")]
+        public async Task<IActionResult> CheckHealth()
+        {
+            bool isDbUp = await _context.Database.CanConnectAsync();
+
+            if (!isDbUp)
+            {
+                return StatusCode(503, "Database connection unavailable.");
+            }
+
+            return Ok(new { status = "Healthy", timestamp = DateTime.UtcNow});
+        }
+
         [HttpGet]
         public async Task<ActionResult<IEnumerable<WinEvent>>> GetWinEvents(
             [FromQuery] int? id,
@@ -64,16 +76,15 @@ namespace WinStride_Api.Controllers
             return await query.ToListAsync();
         }
 
-        // PUT api/<EventController>/5
-        [HttpPut("{id}")]
-        public void Put(int id, [FromBody] string value)
+        [HttpPost]
+        public async Task<ActionResult<WinEvent>> PostWinEvent(WinEvent winEvent)
         {
-        }
+            winEvent.TimeCreated = DateTime.SpecifyKind(winEvent.TimeCreated, DateTimeKind.Utc);
 
-        // DELETE api/<EventController>/5
-        [HttpDelete("{id}")]
-        public void Delete(int id)
-        {
+            _context.WinEvents.Add(winEvent);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(GetWinEvents), new { id = winEvent.Id }, winEvent);
         }
     }
 }
