@@ -73,7 +73,10 @@ namespace WinStride_Api.Controllers
                 query = query.Where(e => e.TimeCreated <= utcEnd);
             }
 
-            return await query.ToListAsync();
+            return await query
+                .OrderByDescending(e => e.TimeCreated)
+                .Take(100)                             
+                .ToListAsync();
         }
 
         [HttpPost]
