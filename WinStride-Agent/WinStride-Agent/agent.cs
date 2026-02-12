@@ -14,12 +14,6 @@ class Agent
             return;
         }
 
-        if (!IsRunningAsAdmin())
-        {
-            Console.WriteLine("Error: This application must be 'Run as Administrator' to access Security logs.");
-            return;
-        }
-
         EventLog eventLog = new EventLog(logName);
 
         if (eventLog.Entries.Count > 0)
