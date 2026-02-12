@@ -32,22 +32,34 @@ class Agent
         }
 
         EventLogQuery query = new EventLogQuery("Security", PathType.LogName, "*");
-        query.ReverseDirection = true;
 
-        using (EventLogReader reader = new EventLogReader(query))
+        using (EventLogWatcher watcher = new EventLogWatcher(query))
         {
+            watcher.EventRecordWritten += new EventHandler<EventRecordWrittenEventArgs>(OnEventWritten);
+            watcher.Enabled = true;
 
-            using (EventLogRecord record = (EventLogRecord)reader.ReadEvent())
-            {
-                if (record != null)
-                {
-                    WinEvent logData = MapRecordToModel(record);
-                    await PostLogToApi(logData);
-                }
-            }
+            Console.WriteLine("Watcher enabled. Press [Enter] to stop the agent.");
+            Console.ReadLine();
         }
     }
 
+    private static async void OnEventWritten(object sender, EventRecordWrittenEventArgs arg)
+    {
+        if (arg.EventRecord != null)
+        {
+            try
+            {
+                EventLogRecord record = (EventLogRecord)arg.EventRecord;
+                WinEvent logData = MapRecordToModel(record);
+
+                await PostLogToApi(logData);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error processing real-time event: {ex.Message}");
+            }
+        }
+    }
     private static WinEvent MapRecordToModel(EventLogRecord record)
     {
         string rawXml = record.ToXml();
@@ -75,7 +87,7 @@ class Agent
 
             if (response.IsSuccessStatusCode)
             {
-                Console.WriteLine("System Status: Healthy.");
+                //Console.WriteLine("System Status: Healthy.");
                 return true;
             }
 
@@ -96,14 +108,10 @@ class Agent
             string json = System.Text.Json.JsonSerializer.Serialize(data);
             StringContent content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            Console.WriteLine("Posting most recent log");
+            //Console.WriteLine("Posting most recent log");
             HttpResponseMessage response = await client.PostAsync(BaseUrl, content);
 
-            if (response.IsSuccessStatusCode)
-            {
-                Console.WriteLine("Successfully synced with PostgreSQL.");
-            }
-            else
+            if (!response.IsSuccessStatusCode)
             {
                 Console.WriteLine($"Post failed: {response.StatusCode}");
             }
