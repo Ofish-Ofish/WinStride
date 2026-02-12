@@ -1,10 +1,14 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Diagnostics.Eventing.Reader;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Xml;
 using WinStrideApi.Models;
+using Newtonsoft.Json;
+
 
 class Agent
 {
@@ -27,30 +31,41 @@ class Agent
             return;
         }
 
-        EventLog eventLog = new EventLog(logName);
+        EventLogQuery query = new EventLogQuery("Security", PathType.LogName, "*");
+        query.ReverseDirection = true;
 
-        if (eventLog.Entries.Count <= 0)
+        using (EventLogReader reader = new EventLogReader(query))
         {
-            Console.WriteLine($"The {logName} log is empty.");
-            return;
+
+            using (EventLogRecord record = (EventLogRecord)reader.ReadEvent())
+            {
+                if (record != null)
+                {
+                    WinEvent logData = MapRecordToModel(record);
+                    await PostLogToApi(logData);
+                }
+            }
         }
-
-        EventLogEntry lastEntry = eventLog.Entries[^1];
-
-        WinEvent logData = new WinEvent
-        {
-            EventId = (int)lastEntry.InstanceId,
-            LogName = logName,
-            MachineName = lastEntry.MachineName,
-            Level = lastEntry.EntryType.ToString(),
-            TimeCreated = lastEntry.TimeGenerated.ToUniversalTime(),
-            EventData = JsonSerializer.Serialize(new { message = lastEntry.Message })
-        };
-
-        await PostLogToApi(logData);
-
-
     }
+
+    private static WinEvent MapRecordToModel(EventLogRecord record)
+    {
+        string rawXml = record.ToXml();
+        XmlDocument doc = new XmlDocument();
+        doc.LoadXml(rawXml);
+        string jsonFromXml = JsonConvert.SerializeXmlNode(doc);
+
+        return new WinEvent
+        {
+            EventId = record.Id,
+            LogName = record.LogName,
+            MachineName = record.MachineName,
+            Level = record.LevelDisplayName ?? "Information",
+            TimeCreated = record.TimeCreated?.ToUniversalTime() ?? DateTime.UtcNow,
+            EventData = jsonFromXml
+        };
+    }
+
     static async Task<bool> ApiIsHealthy()
     {
         try
@@ -78,7 +93,7 @@ class Agent
     {
         try
         {
-            string json = JsonSerializer.Serialize(data);
+            string json = System.Text.Json.JsonSerializer.Serialize(data);
             StringContent content = new StringContent(json, Encoding.UTF8, "application/json");
 
             Console.WriteLine("Posting most recent log");
