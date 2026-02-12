@@ -13,4 +13,8 @@
     <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\WinStride-Api\WinStride-Api\WinStride-Api.csproj" />
+  </ItemGroup>
+
 </Project>
