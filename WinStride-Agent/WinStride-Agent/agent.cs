@@ -13,156 +13,63 @@ class Agent
 {
     private static readonly HttpClient client = new HttpClient();
     private const string BaseUrl = "http://localhost:5090/api/Event";
+
     static async Task Main()
     {
-
         if (!await ApiIsHealthy())
         {
-            Console.WriteLine("Critial Error: API or Database is unavailable. Terminating session.");
+            Console.WriteLine("Critical Error: API or Database is unavailable. Terminating session.");
             return;
         }
 
-        string logName = "Security";
-
-        if (!EventLog.Exists(logName))
+        List<string> logsToMonitor = new List<string>
         {
-            Console.WriteLine($"Error: The log '{logName}' does not exist on this system.");
-            return;
-        }
+            "Security",
+            "Microsoft-Windows-PowerShell/Operational",
+            "Microsoft-Windows-Sysmon/Operational"
+        };
 
-        string currentMachine = Environment.MachineName;
-        WinEvent? lastSavedLog = await GetLastLogFromApi(currentMachine);
-
-        if (lastSavedLog != null)
-        {
-            await SyncBacklogAsync(lastSavedLog.TimeCreated);
-        }
-        else
-        {
-            await SyncBacklogAsync(null);
-        }
-
-        EventLogQuery query = new EventLogQuery("Security", PathType.LogName, "*");
-
-        using (EventLogWatcher watcher = new EventLogWatcher(query))
-        {
-            watcher.EventRecordWritten += new EventHandler<EventRecordWrittenEventArgs>(OnEventWritten);
-            watcher.Enabled = true;
-
-            Console.WriteLine("Watcher enabled. Press [Enter] to stop the agent.");
-            Console.ReadLine();
-        }
-    }
-
-    private static async Task SyncBacklogAsync(DateTime? since)
-    {
-        string queryText;
-        if (since.HasValue)
-        {
-            DateTime startAfter = since.Value.AddTicks(1);
-            string xmlTime = startAfter.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ");
-            queryText = $"*[System[TimeCreated[@SystemTime > '{xmlTime}']]]";
-        }
-        else
-        {
-            queryText = "*";
-        }
-        
-        EventLogQuery query = new EventLogQuery("Security", PathType.LogName, queryText);
-
-        using (EventLogReader reader = new EventLogReader(query))
-        {
-            EventLogRecord? record;
-            int count = 0;
-            while ((record = (EventLogRecord)reader.ReadEvent()) != null)
-            {
-                using (record)
-                {
-                    WinEvent logData = MapRecordToModel(record);
+        List<Task> monitorTasks = new List<Task>();
 
 
-                    await PostLogToApi(logData);
-                    count++;
-                }
-            }
-            Console.WriteLine($"Sync complete. Uploaded {count} historical logs.");
-        }
-    }
-
-    public static async Task<WinEvent?> GetLastLogFromApi(string machineName)
-    {
-        try
-        {
-            string requestUrl = $"{BaseUrl}?machineName={Uri.EscapeDataString(machineName)}";
-            HttpResponseMessage response = await client.GetAsync(requestUrl);
-
-            if (response.IsSuccessStatusCode)
-            {
-                string json = await response.Content.ReadAsStringAsync();
-                List<WinEvent>? logs = System.Text.Json.JsonSerializer.Deserialize<List<WinEvent>>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                }); 
-                return logs?.FirstOrDefault();
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error fetching last log: {ex.Message}");
-        }
-        return null;
-    }
-
-    private static async void OnEventWritten(object sender, EventRecordWrittenEventArgs arg)
-    {
-        if (arg.EventRecord != null)
+        foreach (string logPath in logsToMonitor)
         {
             try
             {
-                EventLogRecord record = (EventLogRecord)arg.EventRecord;
-                WinEvent logData = MapRecordToModel(record);
+                EventLogConfiguration logConfig = new EventLogConfiguration(logPath);
 
-                await PostLogToApi(logData);
+                LogMonitor monitor = new LogMonitor(logPath, client, BaseUrl);
+                monitorTasks.Add(monitor.StartAsync());
             }
-            catch (Exception ex)
+            catch (EventLogNotFoundException)
             {
-                Console.WriteLine($"Error processing real-time event: {ex.Message}");
+                Console.WriteLine($"[Warning] Log path '{logPath}' not found. Skipping.");
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Console.WriteLine($"[Error] Access Denied for '{logPath}'. Please run as Administrator.");
             }
         }
-    }
-    private static WinEvent MapRecordToModel(EventLogRecord record)
-    {
-        string rawXml = record.ToXml();
-        XmlDocument doc = new XmlDocument();
-        doc.LoadXml(rawXml);
-        string jsonFromXml = JsonConvert.SerializeXmlNode(doc);
 
-        return new WinEvent
+        if (monitorTasks.Count == 0)
         {
-            EventId = record.Id,
-            LogName = record.LogName,
-            MachineName = record.MachineName,
-            Level = record.LevelDisplayName ?? "Information",
-            TimeCreated = record.TimeCreated?.ToUniversalTime() ?? DateTime.UtcNow,
-            EventData = jsonFromXml
-        };
+            Console.WriteLine("No valid logs to monitor. Press [Enter] to exit.");
+            Console.ReadLine();
+            return;
+        }
+
+        await Task.WhenAll(monitorTasks);
+        Console.WriteLine("\nAll monitors are active. Press [Enter] to terminate the agent.");
+        Console.ReadLine();
     }
 
     static async Task<bool> ApiIsHealthy()
     {
         try
         {
-            Console.WriteLine("Checking API health");
-            var response = await client.GetAsync($"{BaseUrl}/health");
-
-            if (response.IsSuccessStatusCode)
-            {
-                //Console.WriteLine("System Status: Healthy.");
-                return true;
-            }
-
-            Console.WriteLine($"System Status: Unhealthy ({response.StatusCode})");
-            return false;
+            Console.WriteLine("Checking API health...");
+            HttpResponseMessage response = await client.GetAsync($"{BaseUrl}/health");
+            return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
         {
@@ -170,26 +77,154 @@ class Agent
             return false;
         }
     }
+}
 
-    static async Task PostLogToApi(object data)
+public class LogMonitor
+{
+    private readonly string _logName;
+    private readonly HttpClient _client;
+    private readonly string _baseUrl;
+    private readonly string _machineName;
+
+    public LogMonitor(string logName, HttpClient client, string baseUrl)
+    {
+        _logName = logName;
+        _client = client;
+        _baseUrl = baseUrl;
+        _machineName = Environment.MachineName;
+    }
+
+    public async Task StartAsync()
+    {
+        WinEvent? lastSavedLog = await GetLastLogFromApi();
+        await SyncBacklogAsync(lastSavedLog?.TimeCreated);
+        StartLiveWatcher();
+    }
+
+    private async Task SyncBacklogAsync(DateTime? since)
+    {
+        string queryText;
+        if (since.HasValue)
+        {
+            string xmlTime = since.Value.AddTicks(1).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ");
+            queryText = $"*[System[TimeCreated[@SystemTime > '{xmlTime}']]]";
+        }
+        else
+        {
+            queryText = "*";
+        }
+
+        EventLogQuery query = new EventLogQuery(_logName, PathType.LogName, queryText);
+
+        try
+        {
+            using (EventLogReader reader = new EventLogReader(query))
+            {
+                EventLogRecord? record;
+                int count = 0;
+                while ((record = (EventLogRecord)reader.ReadEvent()) != null)
+                {
+                    using (record)
+                    {
+                        WinEvent logData = MapRecordToModel(record);
+                        await PostLogToApi(logData);
+                        count++;
+                    }
+                }
+                Console.WriteLine($"[{_logName}] Backlog sync complete. {count} logs uploaded.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{_logName}] Sync error: {ex.Message}");
+        }
+    }
+
+    private void StartLiveWatcher()
+    {
+        EventLogQuery query = new EventLogQuery(_logName, PathType.LogName, "*");
+        EventLogWatcher watcher = new EventLogWatcher(query);
+
+        watcher.EventRecordWritten += async (object? sender, EventRecordWrittenEventArgs arg) =>
+        {
+            if (arg.EventRecord != null)
+            {
+                try
+                {
+                    using (EventLogRecord record = (EventLogRecord)arg.EventRecord)
+                    {
+                        WinEvent logData = MapRecordToModel(record);
+                        await PostLogToApi(logData);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[{_logName}] Live watch error: {ex.Message}");
+                }
+            }
+        };
+
+        watcher.Enabled = true;
+        Console.WriteLine($"[{_logName}] Live watcher is now enabled.");
+    }
+
+    public async Task<WinEvent?> GetLastLogFromApi()
+    {
+        try
+        {
+            string requestUrl = $"{_baseUrl}?machineName={Uri.EscapeDataString(_machineName)}&logName={Uri.EscapeDataString(_logName)}";
+            HttpResponseMessage response = await _client.GetAsync(requestUrl);
+
+            if (response.IsSuccessStatusCode)
+            {
+                string json = await response.Content.ReadAsStringAsync();
+                List<WinEvent>? logs = System.Text.Json.JsonSerializer.Deserialize<List<WinEvent>>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+                return logs?.FirstOrDefault();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{_logName}] Error fetching last log: {ex.Message}");
+        }
+        return null;
+    }
+
+    private async Task PostLogToApi(WinEvent data)
     {
         try
         {
             string json = System.Text.Json.JsonSerializer.Serialize(data);
             StringContent content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            //Console.WriteLine("Posting most recent log");
-            HttpResponseMessage response = await client.PostAsync(BaseUrl, content);
+            HttpResponseMessage response = await _client.PostAsync(_baseUrl, content);
 
             if (!response.IsSuccessStatusCode)
             {
-                Console.WriteLine($"Post failed: {response.StatusCode}");
+                Console.WriteLine($"[{_logName}] Post failed: {response.StatusCode}");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error during post: {ex.Message}");
+            Console.WriteLine($"[{_logName}] Error posting log: {ex.Message}");
         }
     }
 
+    private WinEvent MapRecordToModel(EventLogRecord record)
+    {
+        XmlDocument doc = new XmlDocument();
+        doc.LoadXml(record.ToXml());
+        string jsonFromXml = JsonConvert.SerializeXmlNode(doc);
+
+        return new WinEvent
+        {
+            EventId = record.Id,
+            LogName = record.LogName,
+            MachineName = record.MachineName,
+            Level = record.LevelDisplayName ?? $"Level {record.Level}",
+            TimeCreated = record.TimeCreated?.ToUniversalTime() ?? DateTime.UtcNow,
+            EventData = jsonFromXml
+        };
+    }
 }
