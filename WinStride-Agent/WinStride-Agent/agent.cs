@@ -9,7 +9,6 @@ using System.Xml;
 using WinStrideApi.Models;
 using Newtonsoft.Json;
 
-
 class Agent
 {
     private static readonly HttpClient client = new HttpClient();
@@ -31,6 +30,18 @@ class Agent
             return;
         }
 
+        string currentMachine = Environment.MachineName;
+        WinEvent? lastSavedLog = await GetLastLogFromApi(currentMachine);
+
+        if (lastSavedLog != null)
+        {
+            await SyncBacklogAsync(lastSavedLog.TimeCreated);
+        }
+        else
+        {
+            await SyncBacklogAsync(null);
+        }
+
         EventLogQuery query = new EventLogQuery("Security", PathType.LogName, "*");
 
         using (EventLogWatcher watcher = new EventLogWatcher(query))
@@ -41,6 +52,65 @@ class Agent
             Console.WriteLine("Watcher enabled. Press [Enter] to stop the agent.");
             Console.ReadLine();
         }
+    }
+
+    private static async Task SyncBacklogAsync(DateTime? since)
+    {
+        string queryText;
+        if (since.HasValue)
+        {
+            DateTime startAfter = since.Value.AddTicks(1);
+            string xmlTime = startAfter.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ");
+            queryText = $"*[System[TimeCreated[@SystemTime > '{xmlTime}']]]";
+        }
+        else
+        {
+            queryText = "*";
+        }
+        
+        EventLogQuery query = new EventLogQuery("Security", PathType.LogName, queryText);
+
+        using (EventLogReader reader = new EventLogReader(query))
+        {
+            EventLogRecord? record;
+            int count = 0;
+            while ((record = (EventLogRecord)reader.ReadEvent()) != null)
+            {
+                using (record)
+                {
+                    WinEvent logData = MapRecordToModel(record);
+
+
+                    await PostLogToApi(logData);
+                    count++;
+                }
+            }
+            Console.WriteLine($"Sync complete. Uploaded {count} historical logs.");
+        }
+    }
+
+    public static async Task<WinEvent?> GetLastLogFromApi(string machineName)
+    {
+        try
+        {
+            string requestUrl = $"{BaseUrl}?machineName={Uri.EscapeDataString(machineName)}";
+            HttpResponseMessage response = await client.GetAsync(requestUrl);
+
+            if (response.IsSuccessStatusCode)
+            {
+                string json = await response.Content.ReadAsStringAsync();
+                List<WinEvent>? logs = System.Text.Json.JsonSerializer.Deserialize<List<WinEvent>>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                }); 
+                return logs?.FirstOrDefault();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching last log: {ex.Message}");
+        }
+        return null;
     }
 
     private static async void OnEventWritten(object sender, EventRecordWrittenEventArgs arg)
