@@ -42,7 +42,7 @@ function ToolbarButton({ onClick, children }: { onClick: () => void; children: R
   );
 }
 
-export default function LogonGraph() {
+export default function LogonGraph({ visible }: { visible: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { data: events, isLoading, error } = useQuery<WinEvent[]>({
@@ -56,7 +56,7 @@ export default function LogonGraph() {
     return transformEvents(events);
   }, [events]);
 
-  const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges);
+  const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges, visible);
 
   return (
     <div className="flex flex-col h-full gap-2">

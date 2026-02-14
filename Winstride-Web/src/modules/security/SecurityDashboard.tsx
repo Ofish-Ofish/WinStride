@@ -55,7 +55,12 @@ export default function SecurityDashboard() {
   return (
     <div className="flex flex-col h-full">
       <h2 className="text-xl font-semibold mb-4">Security Events</h2>
-      {viewMode === 'list' ? <EventTable /> : <LogonGraph />}
+      <div className={viewMode === 'list' ? '' : 'hidden'}>
+        <EventTable />
+      </div>
+      <div className={viewMode === 'graph' ? 'flex-1 flex flex-col' : 'hidden'}>
+        <LogonGraph visible={viewMode === 'graph'} />
+      </div>
     </div>
   );
 }

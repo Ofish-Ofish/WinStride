@@ -7,6 +7,36 @@ const PRIVILEGED_USERS = new Set([
   'ADMIN',
 ]);
 
+// Human-readable event descriptions
+const EVENT_LABELS: Record<number, string> = {
+  4624: 'Logon',
+  4625: 'Failed Logon',
+  4634: 'Logoff',
+  4647: 'User Logoff',
+  4648: 'Run As Other User',
+  4662: 'Object Access',
+  4672: 'Admin Logon',
+  4720: 'Account Created',
+  4722: 'Account Enabled',
+  4723: 'Password Change',
+  4724: 'Password Reset',
+  4725: 'Account Disabled',
+  4726: 'Account Deleted',
+  4728: 'Added to Group',
+  4732: 'Added to Local Group',
+  4733: 'Removed from Group',
+  4738: 'Account Changed',
+  4740: 'Account Locked Out',
+  4756: 'Added to Universal Group',
+  4767: 'Account Unlocked',
+  4768: 'Kerberos TGT',
+  4769: 'Kerberos Service Ticket',
+  4776: 'NTLM Auth',
+  4798: 'Group Lookup',
+  4799: 'Local Group Lookup',
+  5379: 'Credential Read',
+};
+
 const LOGON_TYPE_LABELS: Record<number, string> = {
   2: 'Interactive',
   3: 'Network',
@@ -31,6 +61,16 @@ function getDataField(dataArray: unknown[], fieldName: string): string {
     }
   }
   return '';
+}
+
+function getEdgeLabel(eventId: number, logonType: number): string {
+  const base = EVENT_LABELS[eventId] ?? `Event ${eventId}`;
+  // Only append logon type for logon/failed logon, not logoff
+  if ((eventId === 4624 || eventId === 4625) && logonType >= 0) {
+    const lt = LOGON_TYPE_LABELS[logonType];
+    if (lt) return `${base} (${lt})`;
+  }
+  return base;
 }
 
 function extractLogonInfo(event: WinEvent): LogonInfo | null {
@@ -107,24 +147,35 @@ export function transformEvents(events: WinEvent[]): {
     }
     nodeMap.get(machineId)!.logonCount++;
 
-    // Edge keyed by user + machine + logonType
-    const logonTypeLabel = LOGON_TYPE_LABELS[logon.logonType] ?? `Type ${logon.logonType}`;
-    const edgeId = `${userId}->${machineId}::${logon.logonType}`;
-    if (!edgeMap.has(edgeId)) {
-      edgeMap.set(edgeId, {
-        id: edgeId,
+    // Edge keyed by user + machine + eventId + logonType
+    const label = getEdgeLabel(logon.eventId, logon.logonType);
+    const edgeKey = `${userId}->${machineId}::${logon.eventId}::${logon.logonType}`;
+    if (!edgeMap.has(edgeKey)) {
+      edgeMap.set(edgeKey, {
+        id: edgeKey,
         source: userId,
         target: machineId,
         logonCount: 0,
         logonType: logon.logonType,
-        logonTypeLabel,
+        logonTypeLabel: label,
+        firstSeen: logon.timeCreated,
         lastSeen: logon.timeCreated,
+        ipAddress: logon.ipAddress,
+        subjectUserName: logon.subjectUserName,
+        targetDomainName: logon.targetDomainName,
       });
     }
-    const edge = edgeMap.get(edgeId)!;
+    const edge = edgeMap.get(edgeKey)!;
     edge.logonCount++;
     if (logon.timeCreated > edge.lastSeen) {
       edge.lastSeen = logon.timeCreated;
+    }
+    if (logon.timeCreated < edge.firstSeen) {
+      edge.firstSeen = logon.timeCreated;
+    }
+    // Keep the most recent non-empty IP
+    if (logon.ipAddress && logon.ipAddress !== '-') {
+      edge.ipAddress = logon.ipAddress;
     }
   }
 

@@ -75,7 +75,7 @@ namespace WinStride_Api.Controllers
 
             return await query
                 .OrderByDescending(e => e.TimeCreated)
-                .Take(100)                             
+                .Take(10000)                             
                 .ToListAsync();
         }
 

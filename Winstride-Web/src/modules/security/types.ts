@@ -34,5 +34,9 @@ export interface GraphEdge {
   logonCount: number;
   logonType: number;
   logonTypeLabel: string;
+  firstSeen: string;
   lastSeen: string;
+  ipAddress: string;
+  subjectUserName: string;
+  targetDomainName: string;
 }

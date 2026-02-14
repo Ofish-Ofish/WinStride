@@ -9,10 +9,20 @@ export interface SelectedElement {
   data: Record<string, unknown>;
 }
 
+// Simple hash to generate deterministic starting positions
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+
 export function useCytoscape(
   containerRef: React.RefObject<HTMLDivElement | null>,
   nodes: GraphNode[],
   edges: GraphEdge[],
+  visible: boolean,
 ) {
   const cyRef = useRef<Core | null>(null);
   const [selected, setSelected] = useState<SelectedElement | null>(null);
@@ -47,7 +57,9 @@ export function useCytoscape(
     cy.batch(() => {
       cy.elements().remove();
 
+      const spread = Math.max(nodes.length * 100, 2000);
       for (const node of nodes) {
+        const hash = hashCode(node.id);
         cy.add({
           group: 'nodes',
           data: {
@@ -56,6 +68,10 @@ export function useCytoscape(
             type: node.type,
             privileged: node.privileged,
             logonCount: node.logonCount,
+          },
+          position: {
+            x: (((hash >>> 0) % 10000) / 10000 - 0.5) * spread,
+            y: (((hash * 7 >>> 0) % 10000) / 10000 - 0.5) * spread,
           },
         });
       }
@@ -70,7 +86,11 @@ export function useCytoscape(
             logonCount: edge.logonCount,
             logonType: edge.logonType,
             logonTypeLabel: edge.logonTypeLabel,
+            firstSeen: edge.firstSeen,
             lastSeen: edge.lastSeen,
+            ipAddress: edge.ipAddress,
+            subjectUserName: edge.subjectUserName,
+            targetDomainName: edge.targetDomainName,
           },
         });
       }
@@ -106,7 +126,8 @@ export function useCytoscape(
       setSelected({ type: 'edge', data: edge.data() });
     };
 
-    const onTapBg = () => {
+    const onTapBg = (evt: EventObject) => {
+      if (evt.target !== cy) return; // Only fire on background clicks
       cy.elements().removeClass('highlighted dimmed');
       setSelected(null);
     };
@@ -122,8 +143,16 @@ export function useCytoscape(
     };
   }, []);
 
+  // Resize when becoming visible (container goes from display:none to visible)
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || !visible) return;
+    cy.resize();
+    cy.fit(undefined, coseLayout.padding);
+  }, [visible]);
+
   const fitToView = useCallback(() => {
-    cyRef.current?.fit(undefined, 40);
+    cyRef.current?.fit(undefined, coseLayout.padding);
   }, []);
 
   const resetLayout = useCallback(() => {
@@ -131,6 +160,14 @@ export function useCytoscape(
     if (!cy) return;
     cy.elements().removeClass('highlighted dimmed');
     setSelected(null);
+    const spread = Math.max(cy.nodes().length * 100, 2000);
+    cy.nodes().forEach((node) => {
+      const hash = hashCode(node.id());
+      node.position({
+        x: (((hash >>> 0) % 10000) / 10000 - 0.5) * spread,
+        y: (((hash * 7 >>> 0) % 10000) / 10000 - 0.5) * spread,
+      });
+    });
     cy.layout(coseLayout).run();
   }, []);
 
