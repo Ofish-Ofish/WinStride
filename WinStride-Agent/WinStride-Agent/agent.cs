@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using System.Xml;
 using WinStrideApi.Models;
 using Newtonsoft.Json;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
 class Agent
 {
@@ -22,32 +24,27 @@ class Agent
             return;
         }
 
-        List<string> logsToMonitor = new List<string>
-        {
-            "Security",
-            "Microsoft-Windows-PowerShell/Operational",
-            "Microsoft-Windows-Sysmon/Operational"
-        };
+        Dictionary<string, List<int>> logsToMonitor = LoadConfig("config.yaml");
 
         List<Task> monitorTasks = new List<Task>();
 
 
-        foreach (string logPath in logsToMonitor)
+        foreach (KeyValuePair<string, List<int>> logEntry in logsToMonitor)
         {
             try
             {
-                EventLogConfiguration logConfig = new EventLogConfiguration(logPath);
+                EventLogConfiguration logConfig = new EventLogConfiguration(logEntry.Key);
 
-                LogMonitor monitor = new LogMonitor(logPath, client, BaseUrl);
+                LogMonitor monitor = new LogMonitor(logEntry.Key, logEntry.Value, client, BaseUrl);
                 monitorTasks.Add(monitor.StartAsync());
             }
             catch (EventLogNotFoundException)
             {
-                Console.WriteLine($"[Warning] Log path '{logPath}' not found. Skipping.");
+                Console.WriteLine($"[Warning] Log path '{logEntry.Key}' not found. Skipping.");
             }
             catch (UnauthorizedAccessException)
             {
-                Console.WriteLine($"[Error] Access Denied for '{logPath}'. Please run as Administrator.");
+                Console.WriteLine($"[Error] Access Denied for '{logEntry.Key}'. Please run as Administrator.");
             }
         }
 
@@ -77,18 +74,44 @@ class Agent
             return false;
         }
     }
+
+    private static Dictionary<string, List<int>> LoadConfig(string filePath)
+    {
+        try
+        {
+            var yamlContent = File.ReadAllText(filePath);
+            var deserializer = new DeserializerBuilder()
+                .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                .Build();
+
+            return deserializer.Deserialize<Dictionary<string, List<int>>>(yamlContent)
+                   ?? new Dictionary<string, List<int>>();
+        }
+        catch (FileNotFoundException)
+        {
+            Console.WriteLine($"[Warning] {filePath} not found. Monitoring all logs by default.");
+            return new Dictionary<string, List<int>>();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Error] Failed to parse YAML: {ex.Message}");
+            return new Dictionary<string, List<int>>();
+        }
+    }
 }
 
 public class LogMonitor
 {
     private readonly string _logName;
+    private readonly List<int> _targetIds;
     private readonly HttpClient _client;
     private readonly string _baseUrl;
     private readonly string _machineName;
 
-    public LogMonitor(string logName, HttpClient client, string baseUrl)
+    public LogMonitor(string logName, List<int> targetIds, HttpClient client, string baseUrl)
     {
         _logName = logName;
+        _targetIds = targetIds ?? new List<int>();
         _client = client;
         _baseUrl = baseUrl;
         _machineName = Environment.MachineName;
@@ -101,19 +124,33 @@ public class LogMonitor
         StartLiveWatcher();
     }
 
-    private async Task SyncBacklogAsync(DateTime? since)
+    private string BuildXPathQuery(DateTime? since = null)
     {
-        string queryText;
+        List<string> conditions = new List<string>();
+
         if (since.HasValue)
         {
             string xmlTime = since.Value.AddTicks(1).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ");
-            queryText = $"*[System[TimeCreated[@SystemTime > '{xmlTime}']]]";
-        }
-        else
-        {
-            queryText = "*";
+            conditions.Add($"TimeCreated[@SystemTime > '{xmlTime}']");
         }
 
+        if (_targetIds.Count > 0)
+        {
+            string idFilter = string.Join(" or ", _targetIds.Select(delegate (int id) { return $"EventID={id}"; }));
+            conditions.Add($"({idFilter})");
+        }
+
+        if (conditions.Count > 0)
+        {
+            return $"*[System[{string.Join(" and ", conditions)}]]";
+        }
+
+        return "*";
+    }
+
+    private async Task SyncBacklogAsync(DateTime? since)
+    {
+        string queryText = BuildXPathQuery(since);
         EventLogQuery query = new EventLogQuery(_logName, PathType.LogName, queryText);
 
         try
@@ -142,10 +179,11 @@ public class LogMonitor
 
     private void StartLiveWatcher()
     {
-        EventLogQuery query = new EventLogQuery(_logName, PathType.LogName, "*");
+        string queryText = BuildXPathQuery(null);
+        EventLogQuery query = new EventLogQuery(_logName, PathType.LogName, queryText);
         EventLogWatcher watcher = new EventLogWatcher(query);
 
-        watcher.EventRecordWritten += async (object? sender, EventRecordWrittenEventArgs arg) =>
+        watcher.EventRecordWritten += async delegate (object? sender, EventRecordWrittenEventArgs arg)
         {
             if (arg.EventRecord != null)
             {

@@ -1,0 +1,3 @@
+Security: [4624, 4625, 4648, 4662, 4672, 4720, 4726, 4732, 4733, 4738, 4768, 4769, 4776, 5379]
+Microsoft-Windows-PowerShell/Operational: [4103, 4104]
+Microsoft-Windows-Sysmon/Operational: [1, 3, 11]
