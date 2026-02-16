@@ -18,12 +18,6 @@ class Agent
 
     static async Task Main()
     {
-        if (!await ApiIsHealthy())
-        {
-            Console.WriteLine("Critical Error: API or Database is unavailable. Terminating session.");
-            return;
-        }
-
         Dictionary<string, List<int>> logsToMonitor = LoadConfig("config.yaml");
 
         List<Task> monitorTasks = new List<Task>();
@@ -59,22 +53,6 @@ class Agent
         Console.WriteLine("\nAll monitors are active. Press [Enter] to terminate the agent.");
         Console.ReadLine();
     }
-
-    static async Task<bool> ApiIsHealthy()
-    {
-        try
-        {
-            Console.WriteLine("Checking API health...");
-            HttpResponseMessage response = await client.GetAsync($"{BaseUrl}/health");
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Connection failed: {ex.Message}");
-            return false;
-        }
-    }
-
     private static Dictionary<string, List<int>> LoadConfig(string filePath)
     {
         try
@@ -107,6 +85,8 @@ public class LogMonitor
     private readonly HttpClient _client;
     private readonly string _baseUrl;
     private readonly string _machineName;
+    private EventLogWatcher? _watcher;
+    private bool _isRecovering = false;
 
     public LogMonitor(string logName, List<int> targetIds, HttpClient client, string baseUrl)
     {
@@ -116,12 +96,53 @@ public class LogMonitor
         _baseUrl = baseUrl;
         _machineName = Environment.MachineName;
     }
-
     public async Task StartAsync()
     {
         WinEvent? lastSavedLog = await GetLastLogFromApi();
         await SyncBacklogAsync(lastSavedLog?.TimeCreated);
         StartLiveWatcher();
+    }
+
+    private async Task<bool> ApiIsHealthy()
+    {
+        try
+        {
+            Console.WriteLine("Checking API health...");
+            HttpResponseMessage response = await _client.GetAsync($"{_baseUrl}/health");
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Connection failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private async Task StopAndRecover()
+    {
+        if (_isRecovering) return;
+        _isRecovering = true;
+
+        if (_watcher != null)
+        {
+            _watcher.Enabled = false;
+            _watcher.Dispose();
+            _watcher = null;
+        }
+
+        Console.WriteLine($"Connection lost. Watcher stopped. Entering Recovery Mode");
+
+        while (_isRecovering)
+        {
+            _isRecovering = !(await ApiIsHealthy());
+            if(_isRecovering)
+            {
+                await Task.Delay(30000);
+            }
+        }
+
+        Console.WriteLine($"Resuming operations");
+        await StartAsync();
     }
 
     private string BuildXPathQuery(DateTime? since = null)
@@ -164,7 +185,13 @@ public class LogMonitor
                     using (record)
                     {
                         WinEvent logData = MapRecordToModel(record);
-                        await PostLogToApi(logData);
+
+                        bool success = await PostLogToApi(logData);
+                        if (!success)
+                        {
+                            await StopAndRecover();
+                            return;
+                        }
                         count++;
                     }
                 }
@@ -181,18 +208,23 @@ public class LogMonitor
     {
         string queryText = BuildXPathQuery(null);
         EventLogQuery query = new EventLogQuery(_logName, PathType.LogName, queryText);
-        EventLogWatcher watcher = new EventLogWatcher(query);
+        _watcher = new EventLogWatcher(query);
 
-        watcher.EventRecordWritten += async delegate (object? sender, EventRecordWrittenEventArgs arg)
+        _watcher.EventRecordWritten += async delegate (object? sender, EventRecordWrittenEventArgs arg)
         {
-            if (arg.EventRecord != null)
+            if (arg.EventRecord != null && !_isRecovering)
             {
                 try
                 {
                     using (EventLogRecord record = (EventLogRecord)arg.EventRecord)
                     {
                         WinEvent logData = MapRecordToModel(record);
-                        await PostLogToApi(logData);
+                        bool success = await PostLogToApi(logData);
+
+                        if(!success)
+                        {
+                            _ = StopAndRecover();
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -202,7 +234,7 @@ public class LogMonitor
             }
         };
 
-        watcher.Enabled = true;
+        _watcher.Enabled = true;
         Console.WriteLine($"[{_logName}] Live watcher is now enabled.");
     }
 
@@ -230,22 +262,20 @@ public class LogMonitor
         return null;
     }
 
-    private async Task PostLogToApi(WinEvent data)
+    private async Task<bool> PostLogToApi(WinEvent data)
     {
         try
         {
             string json = System.Text.Json.JsonSerializer.Serialize(data);
             StringContent content = new StringContent(json, Encoding.UTF8, "application/json");
             HttpResponseMessage response = await _client.PostAsync(_baseUrl, content);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                Console.WriteLine($"[{_logName}] Post failed: {response.StatusCode}");
-            }
+            
+            return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[{_logName}] Error posting log: {ex.Message}");
+            return false;
         }
     }
 
