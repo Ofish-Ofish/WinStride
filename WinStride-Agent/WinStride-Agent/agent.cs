@@ -18,17 +18,17 @@ class Agent
 
     static async Task Main()
     {
-        Dictionary<string, List<int>> logsToMonitor = LoadConfig("config.yaml");
+        Dictionary<string, LogConfig> logsToMonitor = LoadConfig("config.yaml");
 
         List<Task> monitorTasks = new List<Task>();
 
 
-        foreach (KeyValuePair<string, List<int>> logEntry in logsToMonitor)
+        foreach (KeyValuePair<string, LogConfig> logEntry in logsToMonitor)
         {
+            if (!logEntry.Value.Enabled) continue;
+
             try
             {
-                EventLogConfiguration logConfig = new EventLogConfiguration(logEntry.Key);
-
                 LogMonitor monitor = new LogMonitor(logEntry.Key, logEntry.Value, client, BaseUrl);
                 monitorTasks.Add(monitor.StartAsync());
             }
@@ -53,27 +53,28 @@ class Agent
         Console.WriteLine("\nAll monitors are active. Press [Enter] to terminate the agent.");
         Console.ReadLine();
     }
-    private static Dictionary<string, List<int>> LoadConfig(string filePath)
+    private static Dictionary<string, LogConfig> LoadConfig(string filePath)
     {
         try
         {
-            var yamlContent = File.ReadAllText(filePath);
+            if (!File.Exists(filePath))
+            {
+                Console.WriteLine($"[Warning] {filePath} not found. Monitoring all logs by default.");
+                return new Dictionary<string, LogConfig>();
+            }
+
+            string yamlContent = File.ReadAllText(filePath);
             var deserializer = new DeserializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .Build();
 
-            return deserializer.Deserialize<Dictionary<string, List<int>>>(yamlContent)
-                   ?? new Dictionary<string, List<int>>();
-        }
-        catch (FileNotFoundException)
-        {
-            Console.WriteLine($"[Warning] {filePath} not found. Monitoring all logs by default.");
-            return new Dictionary<string, List<int>>();
+            var config = deserializer.Deserialize<Dictionary<string, LogConfig>>(yamlContent);
+            return config ?? new Dictionary<string, LogConfig>();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[Error] Failed to parse YAML: {ex.Message}");
-            return new Dictionary<string, List<int>>();
+            return new Dictionary<string, LogConfig>();
         }
     }
 }
@@ -81,17 +82,17 @@ class Agent
 public class LogMonitor
 {
     private readonly string _logName;
-    private readonly List<int> _targetIds;
+    private readonly LogConfig _config;
     private readonly HttpClient _client;
     private readonly string _baseUrl;
     private readonly string _machineName;
     private EventLogWatcher? _watcher;
     private bool _isRecovering = false;
 
-    public LogMonitor(string logName, List<int> targetIds, HttpClient client, string baseUrl)
+    public LogMonitor(string logName, LogConfig config, HttpClient client, string baseUrl)
     {
         _logName = logName;
-        _targetIds = targetIds ?? new List<int>();
+        _config = config ?? new LogConfig();
         _client = client;
         _baseUrl = baseUrl;
         _machineName = Environment.MachineName;
@@ -149,24 +150,48 @@ public class LogMonitor
     {
         List<string> conditions = new List<string>();
 
-        if (since.HasValue)
+        int levelId = _config.MinLevel.ToLower() switch
         {
-            string xmlTime = since.Value.AddTicks(1).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ");
+            "critical" => 1,
+            "error" => 2,
+            "warning" => 3,
+            "information" => 4,
+            _ => 5 
+        };
+
+        if (levelId < 5)
+        {
+            conditions.Add($"Level <= {levelId}");
+        }
+
+        DateTime? effectiveSince = since;
+
+        if (_config.MaxBacklogDays.HasValue)
+        {
+            DateTime earliestAllowed = DateTime.UtcNow.AddDays(-_config.MaxBacklogDays.Value);
+            if (!effectiveSince.HasValue || effectiveSince < earliestAllowed)
+            {
+                effectiveSince = earliestAllowed;
+            }
+        }
+        if (effectiveSince.HasValue)
+        {
+            string xmlTime = effectiveSince.Value.AddTicks(1).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ");
             conditions.Add($"TimeCreated[@SystemTime > '{xmlTime}']");
         }
-
-        if (_targetIds.Count > 0)
+        if (_config.IncludeIds != null && _config.IncludeIds.Count > 0)
         {
-            string idFilter = string.Join(" or ", _targetIds.Select(delegate (int id) { return $"EventID={id}"; }));
-            conditions.Add($"({idFilter})");
+            string includes = string.Join(" or ", _config.IncludeIds.Select(id => $"EventID={id}"));
+            conditions.Add($"({includes})");
         }
-
-        if (conditions.Count > 0)
+        if (_config.ExcludeIds != null && _config.ExcludeIds.Count > 0)
         {
-            return $"*[System[{string.Join(" and ", conditions)}]]";
+            string excludes = string.Join(" and ", _config.ExcludeIds.Select(id => $"EventID!={id}"));
+            conditions.Add($"({excludes})");
         }
+        if (conditions.Count == 0) return "*";
 
-        return "*";
+        return $"*[System[{string.Join(" and ", conditions)}]]";
     }
 
     private async Task SyncBacklogAsync(DateTime? since)
@@ -295,4 +320,13 @@ public class LogMonitor
             EventData = jsonFromXml
         };
     }
+}
+
+public class LogConfig
+{
+    public bool Enabled { get; set; } = true;
+    public string MinLevel { get; set; } = "Verbose";
+    public List<int> IncludeIds { get; set; } = new List<int>();
+    public List<int> ExcludeIds { get; set; } = new List<int>();
+    public int? MaxBacklogDays { get; set; } = null;
 }
