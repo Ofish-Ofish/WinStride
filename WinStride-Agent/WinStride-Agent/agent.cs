@@ -14,16 +14,26 @@ using YamlDotNet.Serialization.NamingConventions;
 class Agent
 {
     private static readonly HttpClient client = new HttpClient();
-    private const string BaseUrl = "http://localhost:5090/api/Event";
 
     static async Task Main()
     {
-        Dictionary<string, LogConfig> logsToMonitor = LoadConfig("config.yaml");
+        AppConfig fullConfig = LoadConfig("config.yaml");
+
+        if (string.IsNullOrWhiteSpace(fullConfig.Global.BaseUrl))
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("[CRITICAL ERROR] 'global.baseUrl' is missing in config.yaml.");
+            Console.WriteLine("The agent cannot start without a target API destination.");
+            Console.ResetColor();
+            return;
+        }
+
+        string BaseUrl = fullConfig.Global.BaseUrl;
 
         List<Task> monitorTasks = new List<Task>();
 
 
-        foreach (KeyValuePair<string, LogConfig> logEntry in logsToMonitor)
+        foreach (KeyValuePair<string, LogConfig> logEntry in fullConfig.Logs)
         {
             if (!logEntry.Value.Enabled) continue;
 
@@ -53,14 +63,13 @@ class Agent
         Console.WriteLine("\nAll monitors are active. Press [Enter] to terminate the agent.");
         Console.ReadLine();
     }
-    private static Dictionary<string, LogConfig> LoadConfig(string filePath)
+    private static AppConfig LoadConfig(string filePath)
     {
         try
         {
             if (!File.Exists(filePath))
             {
-                Console.WriteLine($"[Warning] {filePath} not found. Monitoring all logs by default.");
-                return new Dictionary<string, LogConfig>();
+                return new AppConfig();
             }
 
             string yamlContent = File.ReadAllText(filePath);
@@ -68,13 +77,13 @@ class Agent
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .Build();
 
-            var config = deserializer.Deserialize<Dictionary<string, LogConfig>>(yamlContent);
-            return config ?? new Dictionary<string, LogConfig>();
+            var config = deserializer.Deserialize<AppConfig>(yamlContent);
+            return config ?? new AppConfig();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[Error] Failed to parse YAML: {ex.Message}");
-            return new Dictionary<string, LogConfig>();
+            return new AppConfig();
         }
     }
 }
@@ -329,4 +338,15 @@ public class LogConfig
     public List<int> IncludeIds { get; set; } = new List<int>();
     public List<int> ExcludeIds { get; set; } = new List<int>();
     public int? MaxBacklogDays { get; set; } = null;
+}
+
+public class AppConfig
+{
+    public GlobalSettings Global { get; set; } = new GlobalSettings();
+    public Dictionary<string, LogConfig> Logs { get; set; } = new Dictionary<string, LogConfig>();
+}
+
+public class GlobalSettings
+{
+    public string? BaseUrl { get; set; } = null;
 }

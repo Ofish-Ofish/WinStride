@@ -1,20 +1,22 @@
-Security:
-  enabled: true
-  minLevel: Verbose
-  includeIds: [4624, 4625, 4648, 4662, 4672, 4720, 4726, 4732, 4733, 4738, 4768, 4769, 4776, 5379]
-  excludeIds: []
-  maxBacklogDays: 7
+global:
+  baseUrl: "http://localhost:5090/api/Event"
 
-Microsoft-Windows-PowerShell/Operational:
-  enabled: true
-  minLevel: Verbose
-  includeIds: [4103, 4104]
-  excludeIds: []
-  maxBacklogDays: 7
-
-Microsoft-Windows-Sysmon/Operational:
-  enabled: true
-  minLevel: Verbose
-  includeIds: [1, 3, 11]
-  excludeIds: []
-  maxBacklogDays: 7
+logs:
+  Security:
+    enabled: true
+    minLevel: Verbose
+    includeIds: [4624, 4625, 4648, 4662, 4672, 4720, 4726, 4732, 4733, 4738, 4768, 4769, 4776, 5379]
+    excludeIds: []
+    maxBacklogDays: 7
+  Microsoft-Windows-PowerShell/Operational:
+    enabled: true
+    minLevel: Verbose
+    includeIds: [4103, 4104]
+    excludeIds: []
+    maxBacklogDays: 7
+  Microsoft-Windows-Sysmon/Operational:
+    enabled: true
+    minLevel: Verbose
+    includeIds: [1, 3, 11]
+    excludeIds: []
+    maxBacklogDays: 7
