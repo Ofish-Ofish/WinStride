@@ -94,8 +94,8 @@ export const graphStyles: CyStylesheet[] = [
     selector: 'edge',
     style: {
       label: 'data(logonTypeLabel)',
-      color: '#6e7681',
-      'font-size': '8px',
+      color: '#c9d1d9',
+      'font-size': '10px',
       'font-family': 'Inter, system-ui, sans-serif',
       'text-outline-color': '#010409',
       'text-outline-width': 2,
