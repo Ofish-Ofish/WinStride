@@ -33,7 +33,7 @@ namespace WinStride_Api.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<WinEvent>>> GetWinEvents(
             [FromQuery] int? id,
-            [FromQuery] int? eventId,
+            [FromQuery] List<int>? eventIds,
             [FromQuery] string? machineName,
             [FromQuery] string? logName,
             [FromQuery] string? level,
@@ -46,9 +46,9 @@ namespace WinStride_Api.Controllers
             {
                 query = query.Where(e => e.Id == id);
             }
-            if (eventId.HasValue)
+            if (eventIds != null && eventIds.Count > 0)
             {
-                query = query.Where(e => e.EventId == eventId);
+                query = query.Where(e => eventIds.Contains(e.EventId));
             }
             if (!string.IsNullOrEmpty(machineName))
             {
@@ -75,7 +75,7 @@ namespace WinStride_Api.Controllers
 
             return await query
                 .OrderByDescending(e => e.TimeCreated)
-                .Take(1000)                             
+                .Take(5000)
                 .ToListAsync();
         }
 
