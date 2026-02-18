@@ -26,6 +26,12 @@ export function useCytoscape(
 ) {
   const cyRef = useRef<Core | null>(null);
   const [selected, setSelected] = useState<SelectedElement | null>(null);
+  const selectedRef = useRef<SelectedElement | null>(null);
+
+  // Keep ref in sync so event handlers always see the latest value
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
 
   // Initialize Cytoscape
   useEffect(() => {
@@ -106,7 +112,13 @@ export function useCytoscape(
 
     const onTapNode = (evt: EventObject) => {
       const node = evt.target;
-      cy.elements().removeClass('highlighted dimmed');
+
+      // If something is already selected, deselect instead of selecting a new node
+      if (selectedRef.current) {
+        cy.elements().removeClass('highlighted dimmed');
+        setSelected(null);
+        return;
+      }
 
       const neighborhood = node.neighborhood().add(node);
       neighborhood.addClass('highlighted');
@@ -117,7 +129,13 @@ export function useCytoscape(
 
     const onTapEdge = (evt: EventObject) => {
       const edge = evt.target;
-      cy.elements().removeClass('highlighted dimmed');
+
+      // If something is already selected, deselect instead of selecting a new edge
+      if (selectedRef.current) {
+        cy.elements().removeClass('highlighted dimmed');
+        setSelected(null);
+        return;
+      }
 
       const connected = edge.connectedNodes().add(edge);
       connected.addClass('highlighted');
