@@ -98,6 +98,10 @@ public class LogMonitor
     private EventLogWatcher? _watcher;
     private bool _isRecovering = false;
 
+    private List<WinEvent> _liveBuffer = new List<WinEvent>();
+    private readonly object _lock = new object();
+    private DateTime _lastUploadTime = DateTime.Now;
+
     public LogMonitor(string logName, LogConfig config, HttpClient client, string baseUrl)
     {
         _logName = logName;
@@ -106,6 +110,72 @@ public class LogMonitor
         _baseUrl = baseUrl;
         _machineName = Environment.MachineName;
     }
+
+    private void OnEventWritten(object? sender, EventRecordWrittenEventArgs e)
+    {
+        if (e.EventRecord == null || _isRecovering) return;
+
+        try
+        {
+            using (EventLogRecord record = (EventLogRecord)e.EventRecord)
+            {
+                WinEvent logData = MapRecordToModel(record);
+
+                lock (_lock)
+                {
+                    _liveBuffer.Add(logData);
+                    double secondsSinceLast = (DateTime.Now - _lastUploadTime).TotalSeconds;
+
+                    if (_liveBuffer.Count >= 100 || secondsSinceLast > 5)
+                    {
+                        var batchToSend = new List<WinEvent>(_liveBuffer);
+                        _liveBuffer.Clear();
+                        _lastUploadTime = DateTime.Now;
+                        Task.Run(async () =>
+                        {
+                            bool success = await PostBatchToApi(batchToSend);
+                            if (!success)
+                            {
+                                _ = StopAndRecover();
+                            }
+                        });
+                    }
+                }
+            }   
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{_logName}] Critical error in live watcher: {ex.Message}");
+        }
+    }
+    private async Task<bool> PostBatchToApi(List<WinEvent> data)
+    {
+        if (data == null || data.Count == 0) return true;
+
+        try
+        {
+            string json = System.Text.Json.JsonSerializer.Serialize(data);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+            HttpResponseMessage response = await _client.PostAsync(_baseUrl, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return true;
+            }
+            else
+            {
+                Console.WriteLine($"[{_logName}] Batch upload failed. Status: {response.StatusCode}");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{_logName}] Network error during batch upload: {ex.Message}");
+            return false;
+        }
+    }
+
     public async Task StartAsync()
     {
         WinEvent? lastSavedLog = await GetLastLogFromApi();
@@ -205,71 +275,61 @@ public class LogMonitor
 
     private async Task SyncBacklogAsync(DateTime? since)
     {
-        string queryText = BuildXPathQuery(since);
-        EventLogQuery query = new EventLogQuery(_logName, PathType.LogName, queryText);
-
         try
         {
+            string queryText = BuildXPathQuery(since);
+            EventLogQuery query = new EventLogQuery(_logName, PathType.LogName, queryText);
+
             using (EventLogReader reader = new EventLogReader(query))
             {
+                List<WinEvent> batch = new List<WinEvent>();
                 EventLogRecord? record;
-                int count = 0;
+
                 while ((record = (EventLogRecord)reader.ReadEvent()) != null)
                 {
                     using (record)
                     {
-                        WinEvent logData = MapRecordToModel(record);
+                        batch.Add(MapRecordToModel(record));
+                    }
 
-                        bool success = await PostLogToApi(logData);
-                        if (!success)
-                        {
-                            await StopAndRecover();
-                            return;
-                        }
-                        count++;
+                    if (batch.Count >= 100)
+                    {
+                        bool success = await PostBatchToApi(batch);
+                        if (!success) { await StopAndRecover(); return; }
+                        batch.Clear();
                     }
                 }
-                Console.WriteLine($"[{_logName}] Backlog sync complete. {count} logs uploaded.");
+
+                if (batch.Count > 0) await PostBatchToApi(batch);
             }
         }
-        catch (Exception ex)
+        catch (EventLogNotFoundException)
         {
-            Console.WriteLine($"[{_logName}] Sync error: {ex.Message}");
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"[{_logName}] Warning: Log not found on this system. Skipping.");
+            Console.ResetColor();
         }
     }
 
     private void StartLiveWatcher()
     {
-        string queryText = BuildXPathQuery(null);
-        EventLogQuery query = new EventLogQuery(_logName, PathType.LogName, queryText);
-        _watcher = new EventLogWatcher(query);
-
-        _watcher.EventRecordWritten += async delegate (object? sender, EventRecordWrittenEventArgs arg)
+        try
         {
-            if (arg.EventRecord != null && !_isRecovering)
-            {
-                try
-                {
-                    using (EventLogRecord record = (EventLogRecord)arg.EventRecord)
-                    {
-                        WinEvent logData = MapRecordToModel(record);
-                        bool success = await PostLogToApi(logData);
+            string queryText = BuildXPathQuery(null);
+            EventLogQuery query = new EventLogQuery(_logName, PathType.LogName, queryText);
 
-                        if(!success)
-                        {
-                            _ = StopAndRecover();
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[{_logName}] Live watch error: {ex.Message}");
-                }
-            }
-        };
+            _watcher = new EventLogWatcher(query);
 
-        _watcher.Enabled = true;
-        Console.WriteLine($"[{_logName}] Live watcher is now enabled.");
+            _watcher.EventRecordWritten += OnEventWritten;
+
+            _watcher.Enabled = true;
+            Console.WriteLine($"[{_logName}] Live watcher enabled.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[{_logName}] Failed to start watcher: {ex.Message}");
+            _ = StopAndRecover();
+        }
     }
 
     public async Task<WinEvent?> GetLastLogFromApi()
@@ -294,23 +354,6 @@ public class LogMonitor
             Console.WriteLine($"[{_logName}] Error fetching last log: {ex.Message}");
         }
         return null;
-    }
-
-    private async Task<bool> PostLogToApi(WinEvent data)
-    {
-        try
-        {
-            string json = System.Text.Json.JsonSerializer.Serialize(data);
-            StringContent content = new StringContent(json, Encoding.UTF8, "application/json");
-            HttpResponseMessage response = await _client.PostAsync(_baseUrl, content);
-            
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[{_logName}] Error posting log: {ex.Message}");
-            return false;
-        }
     }
 
     private WinEvent MapRecordToModel(EventLogRecord record)
