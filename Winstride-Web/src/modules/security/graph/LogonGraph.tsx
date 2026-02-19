@@ -1,9 +1,10 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchEvents } from '../../../api/client';
 import { transformEvents } from './transformEvents';
 import { useCytoscape } from './useCytoscape';
 import NodeDetailPanel from './NodeDetailPanel';
+import GraphFilterPanel, { DEFAULT_FILTERS, type GraphFilters } from './GraphFilterPanel';
 import type { WinEvent } from '../types';
 
 function Legend() {
@@ -31,30 +32,103 @@ function Legend() {
   );
 }
 
-function ToolbarButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+function ToolbarButton({ onClick, active, children }: { onClick: () => void; active?: boolean; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className="px-3 py-1 text-[11px] text-gray-400 hover:text-gray-200 bg-[#161b22] hover:bg-[#1c2128] rounded-md border border-[#30363d] transition-all duration-150"
+      className={`px-3 py-1 text-[11px] rounded-md border transition-all duration-150 ${
+        active
+          ? 'text-[#58a6ff] bg-[#58a6ff]/10 border-[#58a6ff]/40'
+          : 'text-gray-400 hover:text-gray-200 bg-[#161b22] hover:bg-[#1c2128] border-[#30363d]'
+      }`}
     >
       {children}
     </button>
   );
 }
 
+function buildODataFilter(filters: GraphFilters): string {
+  const parts: string[] = ["logName eq 'Security'"];
+
+  if (filters.eventIds.length > 0) {
+    const orClauses = filters.eventIds.map((id) => `eventId eq ${id}`).join(' or ');
+    parts.push(`(${orClauses})`);
+  }
+
+  if (filters.timeRange !== 'all') {
+    const offsets: Record<string, number> = {
+      '1h': 3_600_000, '6h': 21_600_000, '24h': 86_400_000,
+      '3d': 259_200_000, '7d': 604_800_000, '30d': 2_592_000_000,
+    };
+    const since = new Date(Date.now() - offsets[filters.timeRange]);
+    // OData requires +HH:MM offset, not 'Z' shorthand
+    const iso = since.toISOString().replace('Z', '+00:00');
+    parts.push(`timeCreated gt ${iso}`);
+  }
+
+  return parts.join(' and ');
+}
+
 export default function LogonGraph({ visible }: { visible: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<GraphFilters>(DEFAULT_FILTERS);
+
+  const odataFilter = useMemo(() => buildODataFilter(filters), [filters.eventIds, filters.timeRange]);
 
   const { data: events, isLoading, error } = useQuery<WinEvent[]>({
-    queryKey: ['events', 'security-graph'],
-    queryFn: () => fetchEvents({ logName: 'Security' }),
+    queryKey: ['events', 'security-graph', odataFilter],
+    queryFn: () => fetchEvents({ $filter: odataFilter }),
     refetchInterval: 30000,
   });
 
-  const { nodes, edges } = useMemo(() => {
+  // Step 1: transform raw events into nodes & edges
+  const fullGraph = useMemo(() => {
     if (!events) return { nodes: [], edges: [] };
     return transformEvents(events);
   }, [events]);
+
+  // Extract available machines for the filter panel
+  const availableMachines = useMemo(
+    () => fullGraph.nodes.filter((n) => n.type === 'machine').map((n) => n.label).sort(),
+    [fullGraph.nodes],
+  );
+
+  // Step 2: apply client-side filters
+  const { nodes, edges } = useMemo(() => {
+    let { nodes, edges } = fullGraph;
+
+    // Filter out excluded machines
+    if (filters.excludedMachines.size > 0) {
+      const excluded = filters.excludedMachines;
+      nodes = nodes.filter((n) => n.type !== 'machine' || !excluded.has(n.label));
+      const removedIds = new Set(
+        fullGraph.nodes.filter((n) => n.type === 'machine' && excluded.has(n.label)).map((n) => n.id),
+      );
+      edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
+    }
+
+    // Filter edges by logon type
+    if (filters.logonTypes.length > 0) {
+      const allowedTypes = new Set(filters.logonTypes);
+      edges = edges.filter((e) => e.logonType < 0 || allowedTypes.has(e.logonType));
+    }
+
+    // Filter by min activity
+    if (filters.minActivity > 1) {
+      edges = edges.filter((e) => e.logonCount >= filters.minActivity);
+    }
+
+    // Remove orphaned nodes (no remaining edges)
+    const connectedIds = new Set<string>();
+    for (const e of edges) {
+      connectedIds.add(e.source);
+      connectedIds.add(e.target);
+    }
+    nodes = nodes.filter((n) => connectedIds.has(n.id));
+
+    return { nodes, edges };
+  }, [fullGraph, filters.excludedMachines, filters.logonTypes, filters.minActivity]);
 
   const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges, visible);
 
@@ -70,11 +144,23 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
             </span>
           )}
           <div className="flex gap-1.5">
+            <ToolbarButton onClick={() => setShowFilters(!showFilters)} active={showFilters}>
+              Filters
+            </ToolbarButton>
             <ToolbarButton onClick={fitToView}>Fit</ToolbarButton>
             <ToolbarButton onClick={resetLayout}>Reset</ToolbarButton>
           </div>
         </div>
       </div>
+
+      {/* Filter panel */}
+      {showFilters && (
+        <GraphFilterPanel
+          filters={filters}
+          onFiltersChange={setFilters}
+          availableMachines={availableMachines}
+        />
+      )}
 
       {/* Graph container */}
       <div

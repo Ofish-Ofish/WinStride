@@ -7,7 +7,7 @@ import type { ViewMode } from '../../components/layout/Layout';
 function EventTable() {
   const { data: events, isLoading, error } = useQuery({
     queryKey: ['events', 'security'],
-    queryFn: () => fetchEvents({ logName: 'Security' }),
+    queryFn: () => fetchEvents({ $filter: "logName eq 'Security'" }),
     refetchInterval: 5000,
   });
 

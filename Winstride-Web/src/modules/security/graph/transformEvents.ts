@@ -8,7 +8,7 @@ const PRIVILEGED_USERS = new Set([
 ]);
 
 // Human-readable event descriptions
-const EVENT_LABELS: Record<number, string> = {
+export const EVENT_LABELS: Record<number, string> = {
   4624: 'Logon',
   4625: 'Failed Logon',
   4634: 'Logoff',
@@ -37,7 +37,7 @@ const EVENT_LABELS: Record<number, string> = {
   5379: 'Credential Read',
 };
 
-const LOGON_TYPE_LABELS: Record<number, string> = {
+export const LOGON_TYPE_LABELS: Record<number, string> = {
   2: 'Interactive',
   3: 'Network',
   4: 'Batch',
