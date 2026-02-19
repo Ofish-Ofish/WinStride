@@ -187,8 +187,27 @@ export function useCytoscape(
       }
     });
 
-    // fcose refines from the hub-spoke starting positions
-    cy.layout(coseLayout).run();
+    const layout = cy.layout(coseLayout);
+    layout.on('layoutstop', () => {
+      // Double all distances from center without changing the layout
+      const center = { x: 0, y: 0 };
+      const allNodes = cy.nodes();
+      allNodes.forEach((n) => {
+        center.x += n.position('x');
+        center.y += n.position('y');
+      });
+      center.x /= allNodes.length;
+      center.y /= allNodes.length;
+
+      allNodes.forEach((n) => {
+        n.position({
+          x: center.x + (n.position('x') - center.x) * 2,
+          y: center.y + (n.position('y') - center.y) * 2,
+        });
+      });
+      cy.fit(undefined, coseLayout.padding);
+    });
+    layout.run();
   }, [nodes, edges]);
 
   // Click handlers: highlight neighbors, dim rest
@@ -295,7 +314,25 @@ export function useCytoscape(
       if (pos) node.position(pos);
     });
 
-    cy.layout(coseLayout).run();
+    const layout = cy.layout(coseLayout);
+    layout.on('layoutstop', () => {
+      const center = { x: 0, y: 0 };
+      const allNodes = cy.nodes();
+      allNodes.forEach((n) => {
+        center.x += n.position('x');
+        center.y += n.position('y');
+      });
+      center.x /= allNodes.length;
+      center.y /= allNodes.length;
+      allNodes.forEach((n) => {
+        n.position({
+          x: center.x + (n.position('x') - center.x) * 2,
+          y: center.y + (n.position('y') - center.y) * 2,
+        });
+      });
+      cy.fit(undefined, coseLayout.padding);
+    });
+    layout.run();
   }, []);
 
   return { selected, fitToView, resetLayout };
