@@ -58,7 +58,7 @@ export default function SecurityDashboard() {
       <div className={viewMode === 'list' ? '' : 'hidden'}>
         <EventTable />
       </div>
-      <div className={viewMode === 'graph' ? 'flex-1 flex flex-col' : 'hidden'}>
+      <div className={viewMode === 'graph' ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
         <LogonGraph visible={viewMode === 'graph'} />
       </div>
     </div>

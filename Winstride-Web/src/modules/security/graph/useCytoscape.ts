@@ -58,7 +58,11 @@ export function useCytoscape(
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    if (nodes.length === 0) return;
+
+    if (nodes.length === 0) {
+      cy.elements().remove();
+      return;
+    }
 
     cy.batch(() => {
       cy.elements().remove();
@@ -113,10 +117,20 @@ export function useCytoscape(
     const onTapNode = (evt: EventObject) => {
       const node = evt.target;
 
-      // If something is already selected, deselect instead of selecting a new node
+      // If something is already selected…
       if (selectedRef.current) {
-        cy.elements().removeClass('highlighted dimmed');
-        setSelected(null);
+        // If the clicked node is highlighted (connected), select it
+        if (node.hasClass('highlighted')) {
+          cy.elements().removeClass('highlighted dimmed');
+          const neighborhood = node.neighborhood().add(node);
+          neighborhood.addClass('highlighted');
+          cy.elements().not(neighborhood).addClass('dimmed');
+          setSelected({ type: 'node', data: node.data() });
+        } else {
+          // Clicked a dimmed/non-connected node — just deselect
+          cy.elements().removeClass('highlighted dimmed');
+          setSelected(null);
+        }
         return;
       }
 
@@ -130,10 +144,20 @@ export function useCytoscape(
     const onTapEdge = (evt: EventObject) => {
       const edge = evt.target;
 
-      // If something is already selected, deselect instead of selecting a new edge
+      // If something is already selected…
       if (selectedRef.current) {
-        cy.elements().removeClass('highlighted dimmed');
-        setSelected(null);
+        // If the clicked edge is highlighted (connected), select it
+        if (edge.hasClass('highlighted')) {
+          cy.elements().removeClass('highlighted dimmed');
+          const connected = edge.connectedNodes().add(edge);
+          connected.addClass('highlighted');
+          cy.elements().not(connected).addClass('dimmed');
+          setSelected({ type: 'edge', data: edge.data() });
+        } else {
+          // Clicked a dimmed/non-connected edge — just deselect
+          cy.elements().removeClass('highlighted dimmed');
+          setSelected(null);
+        }
         return;
       }
 

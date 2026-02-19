@@ -20,7 +20,10 @@ builder.Services.AddControllers().AddOData(options =>
         modelBuilder.GetEdmModel()));
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.ResolveConflictingActions(apiDescriptions => apiDescriptions.First());
+});
 
 var app = builder.Build();
 

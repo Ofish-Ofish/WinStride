@@ -1,5 +1,32 @@
 import type { WinEvent, LogonInfo, GraphNode, GraphEdge } from '../types';
 
+const SYSTEM_ACCOUNTS = new Set([
+  'SYSTEM', 'LOCAL SERVICE', 'NETWORK SERVICE', 'ANONYMOUS LOGON',
+  'DefaultAccount', 'WDAGUtilityAccount', 'Guest', '-',
+  'DefaultAppPool', 'IUSR', 'sshd', 'krbtgt',
+]);
+
+const SYSTEM_ACCOUNT_PATTERNS = [
+  /\$$/,              // machine accounts: DESKTOP-01$, SERVER$
+  /^DWM-\d+$/,        // Desktop Window Manager: DWM-1, DWM-2, DWM-3
+  /^UMFD-\d+$/,       // User Mode Font Driver: UMFD-0, UMFD-1
+  /^IUSR/,            // IIS anonymous user
+  /^DefaultAppPool/i, // IIS default app pool
+  /^\.NET/i,          // .NET runtime accounts (.NETClassic, etc.)
+  /^ASPNET/i,         // ASP.NET service accounts
+  /^IIS[ _]?APPPOOL/i,// IIS application pool identities
+  /^MSSQL/i,          // SQL Server service accounts
+  /^SQLServer/i,      // SQL Server accounts
+  /^NT SERVICE\\/i,   // NT SERVICE\* accounts
+  /^NT AUTHORITY/i,   // NT AUTHORITY accounts
+  /^healthmailbox/i,  // Exchange health mailbox
+];
+
+export function isSystemAccount(name: string): boolean {
+  if (SYSTEM_ACCOUNTS.has(name)) return true;
+  return SYSTEM_ACCOUNT_PATTERNS.some((p) => p.test(name));
+}
+
 const PRIVILEGED_USERS = new Set([
   'Administrator',
   'ADMINISTRATOR',

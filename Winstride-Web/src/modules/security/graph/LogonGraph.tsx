@@ -1,7 +1,7 @@
-import { useRef, useMemo, useState } from 'react';
+import { useRef, useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchEvents } from '../../../api/client';
-import { transformEvents } from './transformEvents';
+import { transformEvents, isSystemAccount } from './transformEvents';
 import { useCytoscape } from './useCytoscape';
 import NodeDetailPanel from './NodeDetailPanel';
 import GraphFilterPanel, { DEFAULT_FILTERS, type GraphFilters } from './GraphFilterPanel';
@@ -53,12 +53,15 @@ function buildODataFilter(filters: GraphFilters): string {
   if (filters.eventIds.length > 0) {
     const orClauses = filters.eventIds.map((id) => `eventId eq ${id}`).join(' or ');
     parts.push(`(${orClauses})`);
+  } else {
+    // No events selected — return nothing from server
+    parts.push('eventId eq -1');
   }
 
   if (filters.timeRange !== 'all') {
     const offsets: Record<string, number> = {
-      '1h': 3_600_000, '6h': 21_600_000, '24h': 86_400_000,
-      '3d': 259_200_000, '7d': 604_800_000, '30d': 2_592_000_000,
+      '1h': 3_600_000, '6h': 21_600_000, '12h': 43_200_000, '24h': 86_400_000,
+      '3d': 259_200_000, '7d': 604_800_000, '14d': 1_209_600_000, '30d': 2_592_000_000,
     };
     const since = new Date(Date.now() - offsets[filters.timeRange]);
     // OData requires +HH:MM offset, not 'Z' shorthand
@@ -71,8 +74,29 @@ function buildODataFilter(filters: GraphFilters): string {
 
 export default function LogonGraph({ visible }: { visible: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   const [filters, setFilters] = useState<GraphFilters>(DEFAULT_FILTERS);
+  const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
+
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panelWidth;
+    const onMove = (ev: MouseEvent) => {
+      const delta = startX - ev.clientX; // dragging left = wider panel
+      setPanelWidth(Math.min(1000, Math.max(260, startW + delta)));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [panelWidth]);
 
   const odataFilter = useMemo(() => buildODataFilter(filters), [filters.eventIds, filters.timeRange]);
 
@@ -88,11 +112,22 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     return transformEvents(events);
   }, [events]);
 
-  // Extract available machines for the filter panel
+  // Extract available machines and users for the filter panel
   const availableMachines = useMemo(
     () => fullGraph.nodes.filter((n) => n.type === 'machine').map((n) => n.label).sort(),
     [fullGraph.nodes],
   );
+
+  const availableUsers = useMemo(
+    () => fullGraph.nodes.filter((n) => n.type === 'user').map((n) => n.label).sort(),
+    [fullGraph.nodes],
+  );
+
+  // Calculate max activity across all edges for the slider range
+  const maxActivity = useMemo(() => {
+    if (fullGraph.edges.length === 0) return 10;
+    return Math.max(...fullGraph.edges.map((e) => e.logonCount));
+  }, [fullGraph.edges]);
 
   // Step 2: apply client-side filters
   const { nodes, edges } = useMemo(() => {
@@ -108,15 +143,32 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
       edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
     }
 
-    // Filter edges by logon type
-    if (filters.logonTypes.length > 0) {
-      const allowedTypes = new Set(filters.logonTypes);
-      edges = edges.filter((e) => e.logonType < 0 || allowedTypes.has(e.logonType));
+    // Filter out excluded users
+    if (filters.excludedUsers.size > 0) {
+      const excluded = filters.excludedUsers;
+      nodes = nodes.filter((n) => n.type !== 'user' || !excluded.has(n.label));
+      const removedIds = new Set(
+        fullGraph.nodes.filter((n) => n.type === 'user' && excluded.has(n.label)).map((n) => n.id),
+      );
+      edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
+    }
+
+    // Filter edges by logon type (empty = show nothing)
+    const allowedTypes = new Set(filters.logonTypes);
+    edges = edges.filter((e) => e.logonType < 0 || allowedTypes.has(e.logonType));
+
+    // Hide machine/system accounts
+    if (filters.hideMachineAccounts) {
+      const systemAccountIds = new Set(
+        nodes.filter((n) => n.type === 'user' && isSystemAccount(n.label)).map((n) => n.id),
+      );
+      nodes = nodes.filter((n) => !systemAccountIds.has(n.id));
+      edges = edges.filter((e) => !systemAccountIds.has(e.source) && !systemAccountIds.has(e.target));
     }
 
     // Filter by min activity
-    if (filters.minActivity > 1) {
-      edges = edges.filter((e) => e.logonCount >= filters.minActivity);
+    if (filters.activityThreshold > 1) {
+      edges = edges.filter((e) => e.logonCount >= filters.activityThreshold);
     }
 
     // Remove orphaned nodes (no remaining edges)
@@ -128,14 +180,14 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     nodes = nodes.filter((n) => connectedIds.has(n.id));
 
     return { nodes, edges };
-  }, [fullGraph, filters.excludedMachines, filters.logonTypes, filters.minActivity]);
+  }, [fullGraph, filters.excludedMachines, filters.excludedUsers, filters.logonTypes, filters.activityThreshold, filters.hideMachineAccounts]);
 
   const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges, visible);
 
   return (
-    <div className="flex flex-col h-full gap-2">
+    <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-shrink-0 mb-2">
         <Legend />
         <div className="flex items-center gap-3">
           {nodes.length > 0 && (
@@ -153,22 +205,15 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
         </div>
       </div>
 
-      {/* Filter panel */}
-      {showFilters && (
-        <GraphFilterPanel
-          filters={filters}
-          onFiltersChange={setFilters}
-          availableMachines={availableMachines}
-        />
-      )}
-
-      {/* Graph container */}
-      <div
-        className="relative flex-1 rounded-lg border border-[#21262d] overflow-hidden"
-        style={{
-          background: 'radial-gradient(ellipse at center, #0d1117 0%, #010409 100%)',
-        }}
-      >
+      {/* Main area: graph + right panel */}
+      <div className="flex flex-1 min-h-0">
+        {/* Graph container — full height always */}
+        <div
+          className="relative flex-1 min-w-0 rounded-lg border border-[#21262d] overflow-hidden"
+          style={{
+            background: 'radial-gradient(ellipse at center, #0d1117 0%, #010409 100%)',
+          }}
+        >
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
             <div className="flex items-center gap-3 text-gray-500 text-sm">
@@ -188,8 +233,33 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
           </div>
         )}
 
-        <div ref={containerRef} className="w-full h-full min-h-[500px]" />
+        <div ref={containerRef} className="w-full h-full" />
         {selected && <NodeDetailPanel selected={selected} />}
+      </div>
+
+        {/* Resize handle + Filter sidebar (right) */}
+        {showFilters && (
+          <>
+            <div
+              onMouseDown={onResizeStart}
+              className="w-1.5 flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[#58a6ff]/10 transition-colors"
+            >
+              <div className="w-[3px] h-10 rounded-full bg-[#30363d] group-hover:bg-[#58a6ff]/60 transition-colors" />
+            </div>
+            <div
+              className="flex-shrink-0 overflow-y-auto gf-scrollbar self-stretch"
+              style={{ width: panelWidth, maxHeight: '100%' }}
+            >
+              <GraphFilterPanel
+                filters={filters}
+                onFiltersChange={setFilters}
+                availableMachines={availableMachines}
+                availableUsers={availableUsers}
+                maxActivity={maxActivity}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
