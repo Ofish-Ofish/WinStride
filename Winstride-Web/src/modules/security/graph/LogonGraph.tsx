@@ -4,7 +4,7 @@ import { fetchEvents } from '../../../api/client';
 import { transformEvents, isSystemAccount, LOGON_TYPE_LABELS } from './transformEvents';
 import { useCytoscape } from './useCytoscape';
 import NodeDetailPanel from './NodeDetailPanel';
-import GraphFilterPanel, { DEFAULT_FILTERS, ALL_EVENT_IDS, resolveTriState, type GraphFilters } from './GraphFilterPanel';
+import GraphFilterPanel, { DEFAULT_FILTERS, ALL_EVENT_IDS, resolveTriState, getDefaultFilters, type GraphFilters } from './GraphFilterPanel';
 import { loadFiltersFromStorage, saveFiltersToStorage } from './filterSerializer';
 import type { WinEvent } from '../types';
 
@@ -60,15 +60,13 @@ function buildODataFilter(filters: GraphFilters): string {
     parts.push('eventId eq -1');
   }
 
-  if (filters.timeRange !== 'all') {
-    const offsets: Record<string, number> = {
-      '1h': 3_600_000, '6h': 21_600_000, '12h': 43_200_000, '24h': 86_400_000,
-      '3d': 259_200_000, '7d': 604_800_000, '14d': 1_209_600_000, '30d': 2_592_000_000,
-    };
-    const since = new Date(Date.now() - offsets[filters.timeRange]);
-    // OData requires +HH:MM offset, not 'Z' shorthand
-    const iso = since.toISOString().replace('Z', '+00:00');
+  if (filters.timeStart) {
+    const iso = new Date(filters.timeStart).toISOString().replace('Z', '+00:00');
     parts.push(`timeCreated gt ${iso}`);
+  }
+  if (filters.timeEnd) {
+    const iso = new Date(filters.timeEnd).toISOString().replace('Z', '+00:00');
+    parts.push(`timeCreated lt ${iso}`);
   }
 
   return parts.join(' and ');
@@ -103,7 +101,7 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     document.addEventListener('mouseup', onUp);
   }, [panelWidth]);
 
-  const odataFilter = useMemo(() => buildODataFilter(filters), [filters.eventFilters, filters.timeRange]);
+  const odataFilter = useMemo(() => buildODataFilter(filters), [filters.eventFilters, filters.timeStart, filters.timeEnd]);
 
   const { data: events, isLoading, error } = useQuery<WinEvent[]>({
     queryKey: ['events', 'security-graph', odataFilter],
@@ -130,7 +128,7 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
 
   // Calculate max activity across all edges for the slider range
   const maxActivity = useMemo(() => {
-    if (fullGraph.edges.length === 0) return 10;
+    if (fullGraph.edges.length === 0) return 50;
     return Math.max(...fullGraph.edges.map((e) => e.logonCount));
   }, [fullGraph.edges]);
 
@@ -196,10 +194,11 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
       edges = edges.filter((e) => !systemAccountIds.has(e.source) && !systemAccountIds.has(e.target));
     }
 
-    // Filter by min activity
-    if (filters.activityThreshold > 1) {
-      edges = edges.filter((e) => e.logonCount >= filters.activityThreshold);
-    }
+    // Filter by activity range
+    edges = edges.filter((e) =>
+      e.logonCount >= filters.activityMin &&
+      (filters.activityMax === Infinity || e.logonCount <= filters.activityMax)
+    );
 
     // Remove orphaned nodes (no remaining edges)
     const connectedIds = new Set<string>();
@@ -210,7 +209,7 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     nodes = nodes.filter((n) => connectedIds.has(n.id));
 
     return { nodes, edges };
-  }, [fullGraph, filters.machineFilters, filters.userFilters, filters.logonTypeFilters, filters.activityThreshold, filters.hideMachineAccounts]);
+  }, [fullGraph, filters.machineFilters, filters.userFilters, filters.logonTypeFilters, filters.activityMin, filters.activityMax, filters.hideMachineAccounts]);
 
   const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges, visible);
 

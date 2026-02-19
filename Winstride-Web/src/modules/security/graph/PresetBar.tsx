@@ -6,6 +6,7 @@ import {
   loadCustomPresets,
   saveCustomPreset,
   deleteCustomPreset,
+  applyPreset as resolvePreset,
   type FilterPreset,
 } from './filterPresets';
 
@@ -64,15 +65,8 @@ export default function PresetBar({ filters, onFiltersChange }: Props) {
   const activeId = allPresets.find((p) => filtersMatch(p.filters, filters))?.id ?? null;
 
   /* ---- Preset actions ---- */
-  const applyPreset = (p: FilterPreset) => {
-    // Deep-clone Maps so each application is independent
-    onFiltersChange({
-      ...p.filters,
-      eventFilters: new Map(p.filters.eventFilters),
-      machineFilters: new Map(p.filters.machineFilters),
-      userFilters: new Map(p.filters.userFilters),
-      logonTypeFilters: new Map(p.filters.logonTypeFilters),
-    });
+  const applyPresetFn = (p: FilterPreset) => {
+    onFiltersChange(resolvePreset(p));
   };
 
   const handleSave = () => {
@@ -159,7 +153,7 @@ export default function PresetBar({ filters, onFiltersChange }: Props) {
           {BUILTIN_PRESETS.map((p) => (
             <button
               key={p.id}
-              onClick={() => applyPreset(p)}
+              onClick={() => applyPresetFn(p)}
               className={activeId === p.id ? activeBtnClass : btnClass}
             >
               {p.name}
@@ -176,7 +170,7 @@ export default function PresetBar({ filters, onFiltersChange }: Props) {
             {customPresets.map((p) => (
               <span key={p.id} className="inline-flex items-center gap-0.5">
                 <button
-                  onClick={() => applyPreset(p)}
+                  onClick={() => applyPresetFn(p)}
                   className={activeId === p.id ? activeBtnClass : btnClass}
                 >
                   {p.name}

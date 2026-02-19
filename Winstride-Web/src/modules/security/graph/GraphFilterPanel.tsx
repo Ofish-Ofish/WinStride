@@ -10,32 +10,50 @@ export type FilterState = 'select' | 'exclude';
 
 export interface GraphFilters {
   eventFilters: Map<number, FilterState>;
-  timeRange: '1h' | '6h' | '12h' | '24h' | '3d' | '7d' | '14d' | '30d' | 'all';
+  timeStart: string;   // ISO string or '' (unbounded = all time)
+  timeEnd: string;     // ISO string or '' (unbounded = now)
   machineFilters: Map<string, FilterState>;
   userFilters: Map<string, FilterState>;
   logonTypeFilters: Map<number, FilterState>;
-  activityThreshold: number;
+  activityMin: number; // default 1
+  activityMax: number; // default Infinity (no upper cap)
   hideMachineAccounts: boolean;
 }
 
-export const DEFAULT_FILTERS: GraphFilters = {
-  eventFilters: new Map<number, FilterState>([[4624, 'select'], [4625, 'select'], [4634, 'select']]),
-  timeRange: '3d',
-  machineFilters: new Map(),
-  userFilters: new Map(),
-  logonTypeFilters: new Map(),
-  activityThreshold: 1,
-  hideMachineAccounts: true,
-};
+export function getDefaultFilters(): GraphFilters {
+  return {
+    eventFilters: new Map<number, FilterState>([[4624, 'select'], [4625, 'select'], [4634, 'select']]),
+    timeStart: new Date(Date.now() - 259_200_000).toISOString(), // 3d ago
+    timeEnd: '',
+    machineFilters: new Map(),
+    userFilters: new Map(),
+    logonTypeFilters: new Map(),
+    activityMin: 1,
+    activityMax: Infinity,
+    hideMachineAccounts: true,
+  };
+}
 
-const TIME_STEPS: GraphFilters['timeRange'][] = [
-  '1h', '6h', '12h', '24h', '3d', '7d', '14d', '30d', 'all',
+export const DEFAULT_FILTERS: GraphFilters = getDefaultFilters();
+
+/** Dual slider steps — left = furthest back, right = most recent */
+const TIME_DUAL_STEPS: { label: string; offset: number }[] = [
+  { label: 'All', offset: Infinity },
+  { label: '30d', offset: 2_592_000_000 },
+  { label: '7d',  offset: 604_800_000 },
+  { label: '3d',  offset: 259_200_000 },
+  { label: '48h', offset: 172_800_000 },
+  { label: '24h', offset: 86_400_000 },
+  { label: '12h', offset: 43_200_000 },
+  { label: '6h',  offset: 21_600_000 },
+  { label: '3h',  offset: 10_800_000 },
+  { label: '1h',  offset: 3_600_000 },
+  { label: '30m', offset: 1_800_000 },
+  { label: '15m', offset: 900_000 },
+  { label: 'Now', offset: 0 },
 ];
 
-const TIME_DISPLAY: Record<string, string> = {
-  '1h': '1h', '6h': '6h', '12h': '12h', '24h': '24h',
-  '3d': '3d', '7d': '7d', '14d': '14d', '30d': '30d', 'all': 'All',
-};
+const ACTIVITY_SLIDER_CAP = 50;
 
 const EVENT_CATEGORIES: { name: string; ids: number[] }[] = [
   { name: 'Authentication', ids: [4624, 4625, 4634, 4647, 4648] },
@@ -68,6 +86,12 @@ const SLIDER_CSS = `
 .gf-slider::-webkit-slider-runnable-track{height:4px;background:transparent;border-radius:2px}
 .gf-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#58a6ff;border:2px solid #0d1117;box-shadow:0 0 8px rgba(88,166,255,0.35)}
 .gf-slider::-moz-range-track{height:4px;background:transparent;border-radius:2px;border:none}
+.gf-slider-dual{-webkit-appearance:none;appearance:none;background:transparent;height:20px;width:100%;position:absolute;top:0;left:0;pointer-events:none;z-index:3}
+.gf-slider-dual::-webkit-slider-thumb{-webkit-appearance:none;pointer-events:auto;width:16px;height:16px;border-radius:50%;background:#58a6ff;border:2px solid #0d1117;box-shadow:0 0 8px rgba(88,166,255,0.35);margin-top:-6px;transition:box-shadow .15s;cursor:pointer}
+.gf-slider-dual::-webkit-slider-thumb:hover{box-shadow:0 0 12px rgba(88,166,255,0.55)}
+.gf-slider-dual::-webkit-slider-runnable-track{height:4px;background:transparent;border-radius:2px}
+.gf-slider-dual::-moz-range-thumb{pointer-events:auto;width:14px;height:14px;border-radius:50%;background:#58a6ff;border:2px solid #0d1117;box-shadow:0 0 8px rgba(88,166,255,0.35);cursor:pointer}
+.gf-slider-dual::-moz-range-track{height:4px;background:transparent;border-radius:2px;border:none}
 .gf-scrollbar::-webkit-scrollbar{width:6px}
 .gf-scrollbar::-webkit-scrollbar-track{background:transparent}
 .gf-scrollbar::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
@@ -136,15 +160,36 @@ function cycleCategory(ids: number[], filterMap: Map<number, FilterState>): Map<
 /*  Subcomponents                                                      */
 /* ------------------------------------------------------------------ */
 
-function SliderTrack({ fill }: { fill: number }) {
+function DualRangeTrack({ minPct, maxPct }: { minPct: number; maxPct: number }) {
   return (
     <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[4px] rounded-full bg-[#21262d] pointer-events-none">
       <div
-        className="h-full rounded-full transition-[width] duration-75"
-        style={{ width: `${fill}%`, background: 'linear-gradient(90deg, #1f6feb, #58a6ff)' }}
+        className="h-full rounded-full absolute transition-all duration-75"
+        style={{
+          left: `${minPct}%`,
+          width: `${Math.max(0, maxPct - minPct)}%`,
+          background: 'linear-gradient(90deg, #1f6feb, #58a6ff)',
+        }}
       />
     </div>
   );
+}
+
+function toLocalDateTimeString(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatTimeDisplay(start: string, end: string): string {
+  if (!start && !end) return 'All';
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  if (start && !end) return `${fmt(start)} — Now`;
+  if (!start && end) return `— ${fmt(end)}`;
+  return `${fmt(start)} — ${fmt(end)}`;
 }
 
 function CollapsibleSection({
@@ -383,13 +428,47 @@ export default function GraphFilterPanel({
     onFiltersChange({ ...filters, [key]: value });
   };
 
-  /* ---- Time slider ---- */
-  const timeIndex = TIME_STEPS.indexOf(filters.timeRange);
-  const timeFill = (timeIndex / (TIME_STEPS.length - 1)) * 100;
+  /* ---- Time dual slider ---- */
+  const timeStartIdx = useMemo(() => {
+    if (!filters.timeStart) return 0; // "All"
+    const elapsed = Date.now() - new Date(filters.timeStart).getTime();
+    for (let i = 1; i < TIME_DUAL_STEPS.length - 1; i++) {
+      if (Math.abs(elapsed - TIME_DUAL_STEPS[i].offset) < 300_000) return i;
+    }
+    return 0;
+  }, [filters.timeStart]);
 
-  /* ---- Activity slider ---- */
-  const activityMax = Math.max(maxActivity, 10);
-  const activityFill = ((filters.activityThreshold - 1) / Math.max(activityMax - 1, 1)) * 100;
+  const timeEndIdx = useMemo(() => {
+    if (!filters.timeEnd) return TIME_DUAL_STEPS.length - 1; // "Now"
+    const elapsed = Date.now() - new Date(filters.timeEnd).getTime();
+    for (let i = 1; i < TIME_DUAL_STEPS.length - 1; i++) {
+      if (Math.abs(elapsed - TIME_DUAL_STEPS[i].offset) < 300_000) return i;
+    }
+    return TIME_DUAL_STEPS.length - 1;
+  }, [filters.timeEnd]);
+
+  const timeRange = TIME_DUAL_STEPS.length - 1;
+  const timeMinPct = (timeStartIdx / timeRange) * 100;
+  const timeMaxPct = (timeEndIdx / timeRange) * 100;
+
+  const timeDisplayLabel = timeStartIdx === 0 && timeEndIdx === TIME_DUAL_STEPS.length - 1
+    ? 'All'
+    : `${TIME_DUAL_STEPS[timeStartIdx].label} — ${TIME_DUAL_STEPS[timeEndIdx].label}`;
+
+  /* ---- Activity dual slider ---- */
+  const activityCeiling = Math.min(maxActivity, ACTIVITY_SLIDER_CAP);
+  const effectiveActivityMax = filters.activityMax === Infinity ? activityCeiling : Math.min(filters.activityMax, activityCeiling);
+  const sliderRange = Math.max(activityCeiling - 1, 1);
+  const minPct = ((filters.activityMin - 1) / sliderRange) * 100;
+  const maxPct = ((effectiveActivityMax - 1) / sliderRange) * 100;
+
+  const activityDisplay = (() => {
+    const min = filters.activityMin;
+    if (filters.activityMax === Infinity || filters.activityMax >= activityCeiling) {
+      return min === 1 ? 'All' : `\u2265 ${min}`;
+    }
+    return `${min} – ${filters.activityMax}`;
+  })();
 
   /* ---- Event counts ---- */
   const eventVisibleCount = countVisible(ALL_EVENT_IDS, filters.eventFilters);
@@ -431,34 +510,43 @@ export default function GraphFilterPanel({
         title="Time Range"
         right={
           <span className="text-[12px] font-medium text-[#58a6ff]">
-            {TIME_DISPLAY[filters.timeRange]}
+            {timeDisplayLabel}
           </span>
         }
       >
         <div className="relative h-5">
-          <SliderTrack fill={timeFill} />
+          <DualRangeTrack minPct={timeMinPct} maxPct={timeMaxPct} />
           <input
             type="range"
-            className="gf-slider"
+            className="gf-slider-dual"
             min={0}
-            max={TIME_STEPS.length - 1}
+            max={TIME_DUAL_STEPS.length - 1}
             step={1}
-            value={timeIndex}
-            onChange={(e) => updateFilter('timeRange', TIME_STEPS[Number(e.target.value)])}
+            value={timeStartIdx}
+            onChange={(e) => {
+              const idx = Math.min(Number(e.target.value), timeEndIdx);
+              const step = TIME_DUAL_STEPS[idx];
+              updateFilter('timeStart', step.offset === Infinity ? '' : new Date(Date.now() - step.offset).toISOString());
+            }}
+          />
+          <input
+            type="range"
+            className="gf-slider-dual"
+            min={0}
+            max={TIME_DUAL_STEPS.length - 1}
+            step={1}
+            value={timeEndIdx}
+            onChange={(e) => {
+              const idx = Math.max(Number(e.target.value), timeStartIdx);
+              const step = TIME_DUAL_STEPS[idx];
+              updateFilter('timeEnd', step.offset === 0 ? '' : new Date(Date.now() - step.offset).toISOString());
+            }}
           />
         </div>
         <div className="flex justify-between mt-1 px-0.5">
-          {TIME_STEPS.map((step, i) => (
-            <span
-              key={step}
-              className={`text-[9px] cursor-pointer select-none transition-colors ${
-                i === timeIndex
-                  ? 'text-[#58a6ff] font-semibold'
-                  : 'text-gray-600 hover:text-gray-400'
-              }`}
-              onClick={(e) => { e.stopPropagation(); updateFilter('timeRange', step); }}
-            >
-              {TIME_DISPLAY[step]}
+          {TIME_DUAL_STEPS.map((step) => (
+            <span key={step.label} className="text-[9px] text-gray-600 select-none">
+              {step.label}
             </span>
           ))}
         </div>
@@ -471,26 +559,47 @@ export default function GraphFilterPanel({
         title="Activity"
         right={
           <span className="text-[12px] font-medium text-[#58a6ff]">
-            &ge; {filters.activityThreshold}
+            {activityDisplay}
           </span>
         }
       >
-        <div className="relative h-5">
-          <SliderTrack fill={activityFill} />
-          <input
-            type="range"
-            className="gf-slider"
-            min={1}
-            max={activityMax}
-            step={1}
-            value={filters.activityThreshold}
-            onChange={(e) => updateFilter('activityThreshold', Number(e.target.value))}
-          />
-        </div>
-        <div className="flex justify-between mt-1 px-0.5">
-          <span className="text-[9px] text-gray-600 select-none">1</span>
-          <span className="text-[9px] text-gray-600 select-none">{activityMax}</span>
-        </div>
+        {activityCeiling < 2 ? (
+          <div className="text-[12px] text-gray-500 py-1">All activity: 1</div>
+        ) : (
+          <>
+            <div className="relative h-5">
+              <DualRangeTrack minPct={minPct} maxPct={maxPct} />
+              <input
+                type="range"
+                className="gf-slider-dual"
+                min={1}
+                max={activityCeiling}
+                step={1}
+                value={filters.activityMin}
+                onChange={(e) => {
+                  const val = Math.min(Number(e.target.value), effectiveActivityMax);
+                  updateFilter('activityMin', val);
+                }}
+              />
+              <input
+                type="range"
+                className="gf-slider-dual"
+                min={1}
+                max={activityCeiling}
+                step={1}
+                value={effectiveActivityMax}
+                onChange={(e) => {
+                  const val = Math.max(Number(e.target.value), filters.activityMin);
+                  updateFilter('activityMax', val >= activityCeiling ? Infinity : val);
+                }}
+              />
+            </div>
+            <div className="flex justify-between mt-1 px-0.5">
+              <span className="text-[9px] text-gray-600 select-none">1</span>
+              <span className="text-[9px] text-gray-600 select-none">{activityCeiling}</span>
+            </div>
+          </>
+        )}
       </CollapsibleSection>
 
       <div className="h-px bg-[#21262d]" />
@@ -731,13 +840,10 @@ export default function GraphFilterPanel({
 
       {/* Reset */}
       <button
-        onClick={() => onFiltersChange({
-          ...DEFAULT_FILTERS,
-          eventFilters: new Map(DEFAULT_FILTERS.eventFilters),
-          machineFilters: new Map(),
-          userFilters: new Map(),
-          logonTypeFilters: new Map(),
-        })}
+        onClick={() => {
+          const fresh = getDefaultFilters();
+          onFiltersChange(fresh);
+        }}
         className="w-full py-1.5 text-[11px] text-gray-500 hover:text-gray-300 border border-[#30363d] hover:border-[#3d444d] rounded-md transition-colors"
       >
         Reset Filters

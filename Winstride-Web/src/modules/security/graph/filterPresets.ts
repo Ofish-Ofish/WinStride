@@ -10,6 +10,23 @@ export interface FilterPreset {
   name: string;
   builtin: boolean;
   filters: GraphFilters;
+  /** For built-in presets: ms offset from now to compute timeStart at apply time */
+  timeOffset?: number;
+}
+
+/** Apply a preset, recomputing timeStart from timeOffset if present */
+export function applyPreset(preset: FilterPreset): GraphFilters {
+  const f = {
+    ...preset.filters,
+    eventFilters: new Map(preset.filters.eventFilters),
+    machineFilters: new Map(preset.filters.machineFilters),
+    userFilters: new Map(preset.filters.userFilters),
+    logonTypeFilters: new Map(preset.filters.logonTypeFilters),
+  };
+  if (preset.timeOffset !== undefined) {
+    f.timeStart = new Date(Date.now() - preset.timeOffset).toISOString();
+  }
+  return f;
 }
 
 interface StoredCustomPreset {
@@ -28,13 +45,16 @@ export const BUILTIN_PRESETS: FilterPreset[] = [
     id: 'builtin:auth-only',
     name: 'Auth Only',
     builtin: true,
+    timeOffset: 259_200_000, // 3d
     filters: {
       eventFilters: new Map<number, FilterState>([[4624, 'select'], [4625, 'select'], [4634, 'select']]),
-      timeRange: '3d',
+      timeStart: new Date(Date.now() - 259_200_000).toISOString(),
+      timeEnd: '',
       machineFilters: new Map(),
       userFilters: new Map(),
       logonTypeFilters: new Map(),
-      activityThreshold: 1,
+      activityMin: 1,
+      activityMax: Infinity,
       hideMachineAccounts: true,
     },
   },
@@ -42,13 +62,16 @@ export const BUILTIN_PRESETS: FilterPreset[] = [
     id: 'builtin:all-events',
     name: 'All Events',
     builtin: true,
+    timeOffset: 604_800_000, // 7d
     filters: {
       eventFilters: new Map(),
-      timeRange: '7d',
+      timeStart: new Date(Date.now() - 604_800_000).toISOString(),
+      timeEnd: '',
       machineFilters: new Map(),
       userFilters: new Map(),
       logonTypeFilters: new Map(),
-      activityThreshold: 1,
+      activityMin: 1,
+      activityMax: Infinity,
       hideMachineAccounts: false,
     },
   },
@@ -56,13 +79,16 @@ export const BUILTIN_PRESETS: FilterPreset[] = [
     id: 'builtin:privileges',
     name: 'Privileges',
     builtin: true,
+    timeOffset: 604_800_000, // 7d
     filters: {
       eventFilters: new Map<number, FilterState>([[4672, 'select'], [4648, 'select']]),
-      timeRange: '7d',
+      timeStart: new Date(Date.now() - 604_800_000).toISOString(),
+      timeEnd: '',
       machineFilters: new Map(),
       userFilters: new Map(),
       logonTypeFilters: new Map(),
-      activityThreshold: 1,
+      activityMin: 1,
+      activityMax: Infinity,
       hideMachineAccounts: true,
     },
   },
@@ -70,16 +96,19 @@ export const BUILTIN_PRESETS: FilterPreset[] = [
     id: 'builtin:account-mgmt',
     name: 'Acct Mgmt',
     builtin: true,
+    timeOffset: 1_209_600_000, // 14d
     filters: {
       eventFilters: new Map<number, FilterState>([
         [4720, 'select'], [4722, 'select'], [4723, 'select'], [4724, 'select'],
         [4725, 'select'], [4726, 'select'], [4738, 'select'], [4740, 'select'], [4767, 'select'],
       ]),
-      timeRange: '14d',
+      timeStart: new Date(Date.now() - 1_209_600_000).toISOString(),
+      timeEnd: '',
       machineFilters: new Map(),
       userFilters: new Map(),
       logonTypeFilters: new Map(),
-      activityThreshold: 1,
+      activityMin: 1,
+      activityMax: Infinity,
       hideMachineAccounts: true,
     },
   },
