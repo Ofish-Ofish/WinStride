@@ -30,7 +30,7 @@ namespace WinStride_Api.Controllers
             return Ok(new { status = "Healthy", timestamp = DateTime.UtcNow});
         }
 
-        [EnableQuery(MaxTop = 5000)]
+        [EnableQuery(MaxTop = 5000, MaxNodeCount = 500)]
         public IQueryable<WinEvent> Get()
         {
             return _context.WinEvents.OrderByDescending(e => e.TimeCreated);

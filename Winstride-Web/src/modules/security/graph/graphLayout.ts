@@ -1,5 +1,5 @@
 export const coseLayout = {
   name: 'cose',
-  animate: true,
+  animate: false,
   padding: 10,
 };

@@ -137,43 +137,85 @@ export function useCytoscape(
     };
   }, [containerRef]);
 
-  // Update elements when data changes
+  // Track whether we've done the initial full layout
+  const hasLaidOut = useRef(false);
+
+  // Update elements when data changes — diff-based to preserve positions
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
 
     if (nodes.length === 0) {
       cy.elements().remove();
+      hasLaidOut.current = false;
       return;
     }
 
-    const positions = computeHubSpokePositions(nodes, edges);
+    const isFirstLayout = !hasLaidOut.current;
+    const newNodeIds = new Set(nodes.map((n) => n.id));
+    const newEdgeIds = new Set(edges.map((e) => e.id));
 
     cy.batch(() => {
-      cy.elements().remove();
+      // Remove nodes/edges that no longer exist
+      cy.nodes().forEach((n) => {
+        if (!newNodeIds.has(n.id())) n.remove();
+      });
+      cy.edges().forEach((e) => {
+        if (!newEdgeIds.has(e.id())) e.remove();
+      });
 
+      // Add or update nodes
       for (const node of nodes) {
-        const pos = positions.get(node.id) ?? { x: 0, y: 0 };
-        cy.add({
-          group: 'nodes',
-          data: {
-            id: node.id,
+        const existing = cy.getElementById(node.id);
+        if (existing.length > 0) {
+          // Update data on existing node — position stays
+          existing.data({
             label: node.label,
             type: node.type,
             privileged: node.privileged,
             logonCount: node.logonCount,
-          },
-          position: { x: pos.x, y: pos.y },
-        });
+          });
+        } else {
+          // New node — place near a connected neighbor or at center
+          let pos = { x: 0, y: 0 };
+          if (!isFirstLayout) {
+            // Find a connected edge to position near its other end
+            const connEdge = edges.find(
+              (e) => e.source === node.id || e.target === node.id,
+            );
+            if (connEdge) {
+              const neighborId =
+                connEdge.source === node.id ? connEdge.target : connEdge.source;
+              const neighbor = cy.getElementById(neighborId);
+              if (neighbor.length > 0) {
+                const np = neighbor.position();
+                // Offset randomly so it doesn't land exactly on top
+                pos = {
+                  x: np.x + (Math.random() - 0.5) * 200,
+                  y: np.y + (Math.random() - 0.5) * 200,
+                };
+              }
+            }
+          }
+          cy.add({
+            group: 'nodes',
+            data: {
+              id: node.id,
+              label: node.label,
+              type: node.type,
+              privileged: node.privileged,
+              logonCount: node.logonCount,
+            },
+            position: pos,
+          });
+        }
       }
 
+      // Add or update edges
       for (const edge of edges) {
-        cy.add({
-          group: 'edges',
-          data: {
-            id: edge.id,
-            source: edge.source,
-            target: edge.target,
+        const existing = cy.getElementById(edge.id);
+        if (existing.length > 0) {
+          existing.data({
             logonCount: edge.logonCount,
             logonType: edge.logonType,
             logonTypeLabel: edge.logonTypeLabel,
@@ -182,32 +224,52 @@ export function useCytoscape(
             ipAddress: edge.ipAddress,
             subjectUserName: edge.subjectUserName,
             targetDomainName: edge.targetDomainName,
-          },
-        });
+          });
+        } else {
+          cy.add({
+            group: 'edges',
+            data: {
+              id: edge.id,
+              source: edge.source,
+              target: edge.target,
+              logonCount: edge.logonCount,
+              logonType: edge.logonType,
+              logonTypeLabel: edge.logonTypeLabel,
+              firstSeen: edge.firstSeen,
+              lastSeen: edge.lastSeen,
+              ipAddress: edge.ipAddress,
+              subjectUserName: edge.subjectUserName,
+              targetDomainName: edge.targetDomainName,
+            },
+          });
+        }
       }
     });
 
-    const layout = cy.layout(coseLayout);
-    layout.on('layoutstop', () => {
-      // Double all distances from center without changing the layout
-      const center = { x: 0, y: 0 };
-      const allNodes = cy.nodes();
-      allNodes.forEach((n) => {
-        center.x += n.position('x');
-        center.y += n.position('y');
-      });
-      center.x /= allNodes.length;
-      center.y /= allNodes.length;
-
-      allNodes.forEach((n) => {
-        n.position({
-          x: center.x + (n.position('x') - center.x) * 2,
-          y: center.y + (n.position('y') - center.y) * 2,
+    // Only run full layout on first load
+    if (isFirstLayout) {
+      const layout = cy.layout(coseLayout);
+      layout.on('layoutstop', () => {
+        // Double all distances from center
+        const center = { x: 0, y: 0 };
+        const allNodes = cy.nodes();
+        allNodes.forEach((n) => {
+          center.x += n.position('x');
+          center.y += n.position('y');
         });
+        center.x /= allNodes.length;
+        center.y /= allNodes.length;
+        allNodes.forEach((n) => {
+          n.position({
+            x: center.x + (n.position('x') - center.x) * 2,
+            y: center.y + (n.position('y') - center.y) * 2,
+          });
+        });
+        cy.fit(undefined, coseLayout.padding);
       });
-      cy.fit(undefined, coseLayout.padding);
-    });
-    layout.run();
+      layout.run();
+      hasLaidOut.current = true;
+    }
   }, [nodes, edges]);
 
   // Click handlers: highlight neighbors, dim rest
