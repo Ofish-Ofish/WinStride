@@ -1,5 +1,6 @@
 global:
   baseUrl: "http://localhost:5090/api/Event"
+  batchSize: 100
 
 logs:
   Security:

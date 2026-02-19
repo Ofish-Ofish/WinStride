@@ -29,6 +29,7 @@ class Agent
         }
 
         string BaseUrl = fullConfig.Global.BaseUrl;
+        int batchSize = fullConfig.Global.BatchSize;
 
         List<Task> monitorTasks = new List<Task>();
 
@@ -39,7 +40,7 @@ class Agent
 
             try
             {
-                LogMonitor monitor = new LogMonitor(logEntry.Key, logEntry.Value, client, BaseUrl);
+                LogMonitor monitor = new LogMonitor(logEntry.Key, logEntry.Value, client, BaseUrl, batchSize);
                 monitorTasks.Add(monitor.StartAsync());
             }
             catch (EventLogNotFoundException)
@@ -101,14 +102,16 @@ public class LogMonitor
     private List<WinEvent> _liveBuffer = new List<WinEvent>();
     private readonly object _lock = new object();
     private DateTime _lastUploadTime = DateTime.Now;
+    private readonly int _batchSize;
 
-    public LogMonitor(string logName, LogConfig config, HttpClient client, string baseUrl)
+    public LogMonitor(string logName, LogConfig config, HttpClient client, string baseUrl, int batchSize)
     {
         _logName = logName;
         _config = config ?? new LogConfig();
         _client = client;
         _baseUrl = baseUrl;
         _machineName = Environment.MachineName;
+        _batchSize = batchSize;
     }
 
     private void OnEventWritten(object? sender, EventRecordWrittenEventArgs e)
@@ -126,7 +129,7 @@ public class LogMonitor
                     _liveBuffer.Add(logData);
                     double secondsSinceLast = (DateTime.Now - _lastUploadTime).TotalSeconds;
 
-                    if (_liveBuffer.Count >= 100 || secondsSinceLast > 5)
+                    if (_liveBuffer.Count >= _batchSize || secondsSinceLast > 5)
                     {
                         var batchToSend = new List<WinEvent>(_liveBuffer);
                         _liveBuffer.Clear();
@@ -292,7 +295,7 @@ public class LogMonitor
                         batch.Add(MapRecordToModel(record));
                     }
 
-                    if (batch.Count >= 100)
+                    if (batch.Count >= _batchSize)
                     {
                         bool success = await PostBatchToApi(batch);
                         if (!success) { await StopAndRecover(); return; }
@@ -392,4 +395,5 @@ public class AppConfig
 public class GlobalSettings
 {
     public string? BaseUrl { get; set; } = null;
+    public int BatchSize { get; set; } = 100;
 }
