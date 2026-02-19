@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount } from './transformEvents';
+import PresetBar from './PresetBar';
 
 /* ------------------------------------------------------------------ */
 /*  Types & Constants                                                  */
@@ -417,6 +418,13 @@ export default function GraphFilterPanel({
   return (
     <div className="bg-[#0d1117] border border-[#21262d] rounded-xl p-4 space-y-3">
       <TriStateLegend />
+
+      {/* Presets */}
+      <CollapsibleSection title="Presets" defaultOpen={false}>
+        <PresetBar filters={filters} onFiltersChange={onFiltersChange} />
+      </CollapsibleSection>
+
+      <div className="h-px bg-[#21262d]" />
 
       {/* Time Range */}
       <CollapsibleSection

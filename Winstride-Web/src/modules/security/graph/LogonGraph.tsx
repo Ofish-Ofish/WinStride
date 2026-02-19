@@ -1,10 +1,11 @@
-import { useRef, useMemo, useState, useCallback } from 'react';
+import { useRef, useMemo, useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchEvents } from '../../../api/client';
 import { transformEvents, isSystemAccount, LOGON_TYPE_LABELS } from './transformEvents';
 import { useCytoscape } from './useCytoscape';
 import NodeDetailPanel from './NodeDetailPanel';
 import GraphFilterPanel, { DEFAULT_FILTERS, ALL_EVENT_IDS, resolveTriState, type GraphFilters } from './GraphFilterPanel';
+import { loadFiltersFromStorage, saveFiltersToStorage } from './filterSerializer';
 import type { WinEvent } from '../types';
 
 function Legend() {
@@ -76,8 +77,11 @@ function buildODataFilter(filters: GraphFilters): string {
 export default function LogonGraph({ visible }: { visible: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showFilters, setShowFilters] = useState(true);
-  const [filters, setFilters] = useState<GraphFilters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<GraphFilters>(() => loadFiltersFromStorage() ?? DEFAULT_FILTERS);
   const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
+
+  // Persist filters to localStorage on every change
+  useEffect(() => { saveFiltersToStorage(filters); }, [filters]);
 
   const onResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
