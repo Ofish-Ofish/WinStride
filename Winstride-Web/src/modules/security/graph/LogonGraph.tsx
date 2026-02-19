@@ -4,7 +4,7 @@ import { fetchEvents } from '../../../api/client';
 import { transformEvents, isSystemAccount, LOGON_TYPE_LABELS } from './transformEvents';
 import { useCytoscape } from './useCytoscape';
 import NodeDetailPanel from './NodeDetailPanel';
-import GraphFilterPanel, { DEFAULT_FILTERS, ALL_EVENT_IDS, resolveTriState, getDefaultFilters, type GraphFilters } from './GraphFilterPanel';
+import GraphFilterPanel, { DEFAULT_FILTERS, ALL_EVENT_IDS, resolveTriState, type GraphFilters } from './GraphFilterPanel';
 import { loadFiltersFromStorage, saveFiltersToStorage } from './filterSerializer';
 import type { WinEvent } from '../types';
 
@@ -144,15 +144,14 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
         if (state === 'select') selected.add(name);
         else if (state === 'exclude') excluded.add(name);
       }
-      const nodesBefore = new Set(nodes);
+      const prevNodeIds = new Set(nodes.filter((n) => n.type === 'machine').map((n) => n.id));
       if (selected.size > 0) {
         nodes = nodes.filter((n) => n.type !== 'machine' || selected.has(n.label));
       } else if (excluded.size > 0) {
         nodes = nodes.filter((n) => n.type !== 'machine' || !excluded.has(n.label));
       }
-      const removedIds = new Set(
-        [...nodesBefore].filter((n) => n.type === 'machine' && !nodes.includes(n)).map((n) => n.id),
-      );
+      const keptIds = new Set(nodes.filter((n) => n.type === 'machine').map((n) => n.id));
+      const removedIds = new Set([...prevNodeIds].filter((id) => !keptIds.has(id)));
       if (removedIds.size > 0) {
         edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
       }
@@ -166,15 +165,14 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
         if (state === 'select') selected.add(name);
         else if (state === 'exclude') excluded.add(name);
       }
-      const nodesBefore = new Set(nodes);
+      const prevNodeIds = new Set(nodes.filter((n) => n.type === 'user').map((n) => n.id));
       if (selected.size > 0) {
         nodes = nodes.filter((n) => n.type !== 'user' || selected.has(n.label));
       } else if (excluded.size > 0) {
         nodes = nodes.filter((n) => n.type !== 'user' || !excluded.has(n.label));
       }
-      const removedIds = new Set(
-        [...nodesBefore].filter((n) => n.type === 'user' && !nodes.includes(n)).map((n) => n.id),
-      );
+      const keptIds = new Set(nodes.filter((n) => n.type === 'user').map((n) => n.id));
+      const removedIds = new Set([...prevNodeIds].filter((id) => !keptIds.has(id)));
       if (removedIds.size > 0) {
         edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
       }

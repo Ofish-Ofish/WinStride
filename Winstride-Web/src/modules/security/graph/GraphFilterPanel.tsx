@@ -175,22 +175,6 @@ function DualRangeTrack({ minPct, maxPct }: { minPct: number; maxPct: number }) 
   );
 }
 
-function toLocalDateTimeString(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function formatTimeDisplay(start: string, end: string): string {
-  if (!start && !end) return 'All';
-  const fmt = (iso: string) => {
-    const d = new Date(iso);
-    return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-  };
-  if (start && !end) return `${fmt(start)} — Now`;
-  if (!start && end) return `— ${fmt(end)}`;
-  return `${fmt(start)} — ${fmt(end)}`;
-}
 
 function CollapsibleSection({
   title,
@@ -447,9 +431,9 @@ export default function GraphFilterPanel({
     return TIME_DUAL_STEPS.length - 1;
   }, [filters.timeEnd]);
 
-  const timeRange = TIME_DUAL_STEPS.length - 1;
-  const timeMinPct = (timeStartIdx / timeRange) * 100;
-  const timeMaxPct = (timeEndIdx / timeRange) * 100;
+  const timeMaxIdx = TIME_DUAL_STEPS.length - 1;
+  const timeMinPct = (timeStartIdx / timeMaxIdx) * 100;
+  const timeMaxPct = (timeEndIdx / timeMaxIdx) * 100;
 
   const timeDisplayLabel = timeStartIdx === 0 && timeEndIdx === TIME_DUAL_STEPS.length - 1
     ? 'All'

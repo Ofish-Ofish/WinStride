@@ -6,7 +6,7 @@ import {
   loadCustomPresets,
   saveCustomPreset,
   deleteCustomPreset,
-  applyPreset as resolvePreset,
+  applyPreset,
   type FilterPreset,
 } from './filterPresets';
 
@@ -66,7 +66,7 @@ export default function PresetBar({ filters, onFiltersChange }: Props) {
 
   /* ---- Preset actions ---- */
   const applyPresetFn = (p: FilterPreset) => {
-    onFiltersChange(resolvePreset(p));
+    onFiltersChange(applyPreset(p));
   };
 
   const handleSave = () => {
