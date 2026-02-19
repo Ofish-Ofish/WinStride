@@ -37,14 +37,19 @@ namespace WinStride_Api.Controllers
         }
 
         [HttpPost("api/Event")]
-        public async Task<ActionResult<WinEvent>> PostWinEvent(WinEvent winEvent)
+        public async Task<ActionResult> PostWinEvents(List<WinEvent> winEvents)
         {
-            winEvent.TimeCreated = winEvent.TimeCreated.ToUniversalTime();
-
-            _context.WinEvents.Add(winEvent);
+            if (winEvents == null || !winEvents.Any())
+            {
+                return BadRequest("No events provided.");
+            }
+            foreach (var winEvent in winEvents)
+            {
+                winEvent.TimeCreated = winEvent.TimeCreated.ToUniversalTime();
+            }
+            _context.WinEvents.AddRange(winEvents);
             await _context.SaveChangesAsync();
-
-            return CreatedAtAction(nameof(Get), new { id = winEvent.Id }, winEvent);
+            return Ok(new { count = winEvents.Count, message = "Batch uploaded successfully." });
         }
     }
 }
