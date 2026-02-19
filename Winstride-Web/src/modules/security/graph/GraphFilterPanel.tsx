@@ -5,22 +5,24 @@ import { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount } from './transformEve
 /*  Types & Constants                                                  */
 /* ------------------------------------------------------------------ */
 
+export type FilterState = 'select' | 'exclude';
+
 export interface GraphFilters {
-  eventIds: number[];
+  eventFilters: Map<number, FilterState>;
   timeRange: '1h' | '6h' | '12h' | '24h' | '3d' | '7d' | '14d' | '30d' | 'all';
-  excludedMachines: Set<string>;
-  excludedUsers: Set<string>;
-  logonTypes: number[];
+  machineFilters: Map<string, FilterState>;
+  userFilters: Map<string, FilterState>;
+  logonTypeFilters: Map<number, FilterState>;
   activityThreshold: number;
   hideMachineAccounts: boolean;
 }
 
 export const DEFAULT_FILTERS: GraphFilters = {
-  eventIds: [4624, 4625, 4634],
+  eventFilters: new Map<number, FilterState>([[4624, 'select'], [4625, 'select'], [4634, 'select']]),
   timeRange: '3d',
-  excludedMachines: new Set(),
-  excludedUsers: new Set(),
-  logonTypes: Object.keys(LOGON_TYPE_LABELS).map(Number),
+  machineFilters: new Map(),
+  userFilters: new Map(),
+  logonTypeFilters: new Map(),
   activityThreshold: 1,
   hideMachineAccounts: true,
 };
@@ -43,7 +45,8 @@ const EVENT_CATEGORIES: { name: string; ids: number[] }[] = [
   { name: 'Object Access', ids: [4662, 4798, 4799, 5379] },
 ];
 
-const ALL_EVENT_IDS = Object.keys(EVENT_LABELS).map(Number);
+export const ALL_EVENT_IDS = Object.keys(EVENT_LABELS).map(Number);
+const ALL_LOGON_TYPES = Object.keys(LOGON_TYPE_LABELS).map(Number);
 
 interface Props {
   filters: GraphFilters;
@@ -77,6 +80,55 @@ function injectStyles() {
   const style = document.createElement('style');
   style.textContent = SLIDER_CSS;
   document.head.appendChild(style);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+export function countVisible<T>(items: T[], filterMap: Map<T, FilterState>): number {
+  const selected = items.filter((i) => filterMap.get(i) === 'select');
+  if (selected.length > 0) return selected.length;
+  const excluded = items.filter((i) => filterMap.get(i) === 'exclude');
+  return items.length - excluded.length;
+}
+
+/** Resolve a tri-state Map into the effective set of allowed items. */
+export function resolveTriState<T>(allItems: T[], filterMap: Map<T, FilterState>): T[] {
+  const selected = allItems.filter((i) => filterMap.get(i) === 'select');
+  if (selected.length > 0) return selected;
+  const excludedSet = new Set(allItems.filter((i) => filterMap.get(i) === 'exclude'));
+  if (excludedSet.size > 0) return allItems.filter((i) => !excludedSet.has(i));
+  return allItems;
+}
+
+function cycleMap<T>(map: Map<T, FilterState>, key: T): Map<T, FilterState> {
+  const next = new Map(map);
+  const current = next.get(key);
+  if (current === undefined) next.set(key, 'select');
+  else if (current === 'select') next.set(key, 'exclude');
+  else next.delete(key);
+  return next;
+}
+
+function getCategoryState(ids: number[], filterMap: Map<number, FilterState>): FilterState | 'mixed' | undefined {
+  const states = ids.map((id) => filterMap.get(id));
+  const first = states[0];
+  if (states.every((s) => s === first)) return first; // all same (including all undefined = off)
+  return 'mixed';
+}
+
+function cycleCategory(ids: number[], filterMap: Map<number, FilterState>): Map<number, FilterState> {
+  const state = getCategoryState(ids, filterMap);
+  const next = new Map(filterMap);
+  if (state === undefined || state === 'mixed') {
+    for (const id of ids) next.set(id, 'select');
+  } else if (state === 'select') {
+    for (const id of ids) next.set(id, 'exclude');
+  } else {
+    for (const id of ids) next.delete(id);
+  }
+  return next;
 }
 
 /* ------------------------------------------------------------------ */
@@ -142,91 +194,120 @@ function QuickAction({ label, onClick }: { label: string; onClick: () => void })
   );
 }
 
-function Checkbox({
-  checked,
-  onChange,
+function TriStateCheckbox({
+  state,
+  onCycle,
   label,
   sub,
 }: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
+  state: FilterState | undefined;
+  onCycle: () => void;
   label: string;
   sub?: string;
 }) {
   return (
     <div
-      onClick={(e) => { e.stopPropagation(); onChange(!checked); }}
+      onClick={(e) => { e.stopPropagation(); onCycle(); }}
       className="flex items-center gap-2.5 px-2 py-[5px] rounded-md hover:bg-[#1c2128] cursor-pointer group transition-colors select-none"
     >
       <div
         className={`w-[15px] h-[15px] rounded-[3px] border-[1.5px] flex items-center justify-center flex-shrink-0 transition-all ${
-          checked
+          state === 'select'
             ? 'bg-[#58a6ff] border-[#58a6ff]'
-            : 'border-[#3d444d] group-hover:border-[#58a6ff]/50'
+            : state === 'exclude'
+              ? 'bg-[#f85149] border-[#f85149]'
+              : 'border-[#3d444d] group-hover:border-[#58a6ff]/50'
         }`}
       >
-        {checked && (
+        {state === 'select' && (
           <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
-            <path
-              d="M2.5 6L5 8.5L9.5 3.5"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+        {state === 'exclude' && (
+          <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
+            <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         )}
       </div>
-      <span className="text-[13px] text-gray-300 leading-tight">
+      <span className={`text-[13px] leading-tight ${
+        state === 'exclude' ? 'text-gray-500 line-through' : 'text-gray-300'
+      }`}>
         {label}
-        {sub && <span className="text-gray-500 ml-1.5">— {sub}</span>}
+        {sub && <span className={`ml-1.5 ${state === 'exclude' ? 'text-gray-600' : 'text-gray-500'}`}>— {sub}</span>}
       </span>
     </div>
   );
 }
 
-function CategoryCheckbox({
-  checked,
-  partial,
-  onChange,
+function TriStateCategoryHeader({
+  state,
+  onCycle,
   label,
 }: {
-  checked: boolean;
-  partial: boolean;
-  onChange: (v: boolean) => void;
+  state: FilterState | 'mixed' | undefined;
+  onCycle: () => void;
   label: string;
 }) {
   return (
     <button
-      onClick={(e) => { e.stopPropagation(); onChange(!checked); }}
+      onClick={(e) => { e.stopPropagation(); onCycle(); }}
       className="flex items-center gap-2 mb-1 group"
     >
       <div
         className={`w-[14px] h-[14px] rounded-[3px] border-[1.5px] flex items-center justify-center flex-shrink-0 transition-all ${
-          checked
+          state === 'select'
             ? 'bg-[#58a6ff] border-[#58a6ff]'
-            : partial
-              ? 'border-[#58a6ff]/60 bg-[#58a6ff]/20'
-              : 'border-[#3d444d] group-hover:border-[#58a6ff]/50'
+            : state === 'exclude'
+              ? 'bg-[#f85149] border-[#f85149]'
+              : state === 'mixed'
+                ? 'border-[#58a6ff]/60 bg-[#58a6ff]/20'
+                : 'border-[#3d444d] group-hover:border-[#58a6ff]/50'
         }`}
       >
-        {checked && (
+        {state === 'select' && (
           <svg className="w-2 h-2 text-white" viewBox="0 0 12 12" fill="none">
-            <path
-              d="M2.5 6L5 8.5L9.5 3.5"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
-        {partial && !checked && <div className="w-1.5 h-[2px] bg-[#58a6ff] rounded-full" />}
+        {state === 'exclude' && (
+          <svg className="w-2 h-2 text-white" viewBox="0 0 12 12" fill="none">
+            <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        )}
+        {state === 'mixed' && <div className="w-1.5 h-[2px] bg-[#58a6ff] rounded-full" />}
       </div>
       <span className="text-[12px] font-medium text-gray-400 group-hover:text-gray-200 transition-colors uppercase tracking-wide">
         {label}
       </span>
     </button>
+  );
+}
+
+function TriStateLegend() {
+  return (
+    <div className="flex items-center gap-3 mb-2 px-1">
+      <span className="flex items-center gap-1.5 text-[10px] text-gray-500">
+        <span className="w-2.5 h-2.5 rounded-sm bg-[#58a6ff] inline-flex items-center justify-center">
+          <svg className="w-1.5 h-1.5 text-white" viewBox="0 0 12 12" fill="none">
+            <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+        Select
+      </span>
+      <span className="flex items-center gap-1.5 text-[10px] text-gray-500">
+        <span className="w-2.5 h-2.5 rounded-sm bg-[#f85149] inline-flex items-center justify-center">
+          <svg className="w-1.5 h-1.5 text-white" viewBox="0 0 12 12" fill="none">
+            <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+        </span>
+        Exclude
+      </span>
+      <span className="flex items-center gap-1.5 text-[10px] text-gray-500">
+        <span className="w-2.5 h-2.5 rounded-sm border border-[#3d444d] inline-block" />
+        Off
+      </span>
+    </div>
   );
 }
 
@@ -309,74 +390,34 @@ export default function GraphFilterPanel({
   const activityMax = Math.max(maxActivity, 10);
   const activityFill = ((filters.activityThreshold - 1) / Math.max(activityMax - 1, 1)) * 100;
 
-  /* ---- Event helpers ---- */
-  const toggleEventId = (id: number, on: boolean) => {
-    const next = on ? [...filters.eventIds, id] : filters.eventIds.filter((e) => e !== id);
-    updateFilter('eventIds', next);
-  };
-
-  const toggleCategory = (ids: number[], on: boolean) => {
-    if (on) {
-      updateFilter('eventIds', Array.from(new Set([...filters.eventIds, ...ids])));
-    } else {
-      updateFilter(
-        'eventIds',
-        filters.eventIds.filter((e) => !ids.includes(e)),
-      );
-    }
-  };
-
-  const isCategoryChecked = (ids: number[]) => ids.every((id) => filters.eventIds.includes(id));
-  const isCategoryPartial = (ids: number[]) =>
-    ids.some((id) => filters.eventIds.includes(id)) && !isCategoryChecked(ids);
-
-  /* ---- Logon type helpers ---- */
-  const toggleLogonType = (lt: number, on: boolean) => {
-    const next = on ? [...filters.logonTypes, lt] : filters.logonTypes.filter((t) => t !== lt);
-    updateFilter('logonTypes', next);
-  };
+  /* ---- Event counts ---- */
+  const eventVisibleCount = countVisible(ALL_EVENT_IDS, filters.eventFilters);
+  const logonTypeVisibleCount = countVisible(ALL_LOGON_TYPES, filters.logonTypeFilters);
 
   /* ---- Machine helpers ---- */
-  const toggleMachine = (machine: string, included: boolean) => {
-    const next = new Set(filters.excludedMachines);
-    included ? next.delete(machine) : next.add(machine);
-    updateFilter('excludedMachines', next);
-  };
-
   const filteredMachines = useMemo(
     () => availableMachines.filter((m) => m.toLowerCase().includes(machineSearch.toLowerCase())),
     [availableMachines, machineSearch],
   );
-
-  const includedMachineCount = availableMachines.filter(
-    (m) => !filters.excludedMachines.has(m),
-  ).length;
+  const visibleMachineCount = countVisible(availableMachines, filters.machineFilters);
 
   /* ---- User helpers ---- */
-  const toggleUser = (user: string, included: boolean) => {
-    const next = new Set(filters.excludedUsers);
-    included ? next.delete(user) : next.add(user);
-    updateFilter('excludedUsers', next);
-  };
-
   const visibleUsers = useMemo(
     () => filters.hideMachineAccounts
       ? availableUsers.filter((u) => !isSystemAccount(u))
       : availableUsers,
     [availableUsers, filters.hideMachineAccounts],
   );
-
   const filteredUsers = useMemo(
     () => visibleUsers.filter((u) => u.toLowerCase().includes(userSearch.toLowerCase())),
     [visibleUsers, userSearch],
   );
-
-  const includedUserCount = visibleUsers.filter(
-    (u) => !filters.excludedUsers.has(u),
-  ).length;
+  const visibleUserCount = countVisible(visibleUsers, filters.userFilters);
 
   return (
     <div className="bg-[#0d1117] border border-[#21262d] rounded-xl p-4 space-y-3">
+      <TriStateLegend />
+
       {/* Time Range */}
       <CollapsibleSection
         title="Time Range"
@@ -452,13 +493,12 @@ export default function GraphFilterPanel({
         right={
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] tabular-nums text-gray-600">
-              {filters.eventIds.length}/{ALL_EVENT_IDS.length}
+              {eventVisibleCount}/{ALL_EVENT_IDS.length}
             </span>
-            <QuickAction label="All" onClick={() => updateFilter('eventIds', ALL_EVENT_IDS)} />
-            <QuickAction label="None" onClick={() => updateFilter('eventIds', [])} />
+            <QuickAction label="Clear" onClick={() => updateFilter('eventFilters', new Map())} />
             <QuickAction
               label="Auth"
-              onClick={() => updateFilter('eventIds', [4624, 4625, 4634])}
+              onClick={() => updateFilter('eventFilters', new Map<number, FilterState>([[4624, 'select'], [4625, 'select'], [4634, 'select']]))}
             />
           </div>
         }
@@ -466,22 +506,20 @@ export default function GraphFilterPanel({
         <ResizableList defaultHeight={240}>
           <div className="space-y-2">
             {EVENT_CATEGORIES.map((cat) => {
-              const allChecked = isCategoryChecked(cat.ids);
-              const partial = isCategoryPartial(cat.ids);
+              const catState = getCategoryState(cat.ids, filters.eventFilters);
               return (
                 <div key={cat.name}>
-                  <CategoryCheckbox
-                    checked={allChecked}
-                    partial={partial}
-                    onChange={(on) => toggleCategory(cat.ids, on)}
+                  <TriStateCategoryHeader
+                    state={catState}
+                    onCycle={() => updateFilter('eventFilters', cycleCategory(cat.ids, filters.eventFilters))}
                     label={cat.name}
                   />
                   <div className="ml-0.5">
                     {cat.ids.map((id) => (
-                      <Checkbox
+                      <TriStateCheckbox
                         key={id}
-                        checked={filters.eventIds.includes(id)}
-                        onChange={(v) => toggleEventId(id, v)}
+                        state={filters.eventFilters.get(id)}
+                        onCycle={() => updateFilter('eventFilters', cycleMap(filters.eventFilters, id))}
                         label={String(id)}
                         sub={EVENT_LABELS[id]}
                       />
@@ -502,15 +540,12 @@ export default function GraphFilterPanel({
         right={
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] tabular-nums text-gray-600">
-              {filters.logonTypes.length}/{Object.keys(LOGON_TYPE_LABELS).length}
+              {logonTypeVisibleCount}/{ALL_LOGON_TYPES.length}
             </span>
             <QuickAction
-              label="All"
-              onClick={() =>
-                updateFilter('logonTypes', Object.keys(LOGON_TYPE_LABELS).map(Number))
-              }
+              label="Clear"
+              onClick={() => updateFilter('logonTypeFilters', new Map())}
             />
-            <QuickAction label="None" onClick={() => updateFilter('logonTypes', [])} />
           </div>
         }
       >
@@ -519,10 +554,10 @@ export default function GraphFilterPanel({
             {Object.entries(LOGON_TYPE_LABELS).map(([ltStr, label]) => {
               const lt = Number(ltStr);
               return (
-                <Checkbox
+                <TriStateCheckbox
                   key={lt}
-                  checked={filters.logonTypes.includes(lt)}
-                  onChange={(v) => toggleLogonType(lt, v)}
+                  state={filters.logonTypeFilters.get(lt)}
+                  onCycle={() => updateFilter('logonTypeFilters', cycleMap(filters.logonTypeFilters, lt))}
                   label={`${lt}`}
                   sub={label}
                 />
@@ -542,15 +577,19 @@ export default function GraphFilterPanel({
             right={
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] tabular-nums text-gray-600">
-                  {includedUserCount}/{visibleUsers.length}
+                  {visibleUserCount}/{visibleUsers.length}
                 </span>
                 <QuickAction
-                  label="All"
-                  onClick={() => updateFilter('excludedUsers', new Set())}
+                  label="Clear"
+                  onClick={() => updateFilter('userFilters', new Map())}
                 />
                 <QuickAction
-                  label="None"
-                  onClick={() => updateFilter('excludedUsers', new Set(availableUsers))}
+                  label="Exclude All"
+                  onClick={() => {
+                    const next = new Map(filters.userFilters);
+                    for (const u of visibleUsers) next.set(u, 'exclude');
+                    updateFilter('userFilters', next);
+                  }}
                 />
               </div>
             }
@@ -600,10 +639,10 @@ export default function GraphFilterPanel({
                   <div className="text-[12px] text-gray-600 py-1">No users found</div>
                 )}
                 {filteredUsers.map((user) => (
-                  <Checkbox
+                  <TriStateCheckbox
                     key={user}
-                    checked={!filters.excludedUsers.has(user)}
-                    onChange={(v) => toggleUser(user, v)}
+                    state={filters.userFilters.get(user)}
+                    onCycle={() => updateFilter('userFilters', cycleMap(filters.userFilters, user))}
                     label={user}
                   />
                 ))}
@@ -623,15 +662,19 @@ export default function GraphFilterPanel({
             right={
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] tabular-nums text-gray-600">
-                  {includedMachineCount}/{availableMachines.length}
+                  {visibleMachineCount}/{availableMachines.length}
                 </span>
                 <QuickAction
-                  label="All"
-                  onClick={() => updateFilter('excludedMachines', new Set())}
+                  label="Clear"
+                  onClick={() => updateFilter('machineFilters', new Map())}
                 />
                 <QuickAction
-                  label="None"
-                  onClick={() => updateFilter('excludedMachines', new Set(availableMachines))}
+                  label="Exclude All"
+                  onClick={() => {
+                    const next = new Map(filters.machineFilters);
+                    for (const m of availableMachines) next.set(m, 'exclude');
+                    updateFilter('machineFilters', next);
+                  }}
                 />
               </div>
             }
@@ -663,10 +706,10 @@ export default function GraphFilterPanel({
                   <div className="text-[12px] text-gray-600 py-1">No machines found</div>
                 )}
                 {filteredMachines.map((machine) => (
-                  <Checkbox
+                  <TriStateCheckbox
                     key={machine}
-                    checked={!filters.excludedMachines.has(machine)}
-                    onChange={(v) => toggleMachine(machine, v)}
+                    state={filters.machineFilters.get(machine)}
+                    onCycle={() => updateFilter('machineFilters', cycleMap(filters.machineFilters, machine))}
                     label={machine}
                   />
                 ))}
@@ -680,7 +723,13 @@ export default function GraphFilterPanel({
 
       {/* Reset */}
       <button
-        onClick={() => onFiltersChange({ ...DEFAULT_FILTERS, excludedMachines: new Set(), excludedUsers: new Set() })}
+        onClick={() => onFiltersChange({
+          ...DEFAULT_FILTERS,
+          eventFilters: new Map(DEFAULT_FILTERS.eventFilters),
+          machineFilters: new Map(),
+          userFilters: new Map(),
+          logonTypeFilters: new Map(),
+        })}
         className="w-full py-1.5 text-[11px] text-gray-500 hover:text-gray-300 border border-[#30363d] hover:border-[#3d444d] rounded-md transition-colors"
       >
         Reset Filters

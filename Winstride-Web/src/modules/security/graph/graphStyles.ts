@@ -109,6 +109,7 @@ export const graphStyles: CyStylesheet[] = [
       'target-arrow-shape': 'triangle',
       'arrow-scale': 0.6,
       'curve-style': 'bezier',
+      'control-point-step-size': 40,
       opacity: 0.55,
       'overlay-padding': 8,
       'transition-property': 'opacity, line-color, width',

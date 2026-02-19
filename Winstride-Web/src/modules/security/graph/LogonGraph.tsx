@@ -1,10 +1,10 @@
 import { useRef, useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchEvents } from '../../../api/client';
-import { transformEvents, isSystemAccount } from './transformEvents';
+import { transformEvents, isSystemAccount, LOGON_TYPE_LABELS } from './transformEvents';
 import { useCytoscape } from './useCytoscape';
 import NodeDetailPanel from './NodeDetailPanel';
-import GraphFilterPanel, { DEFAULT_FILTERS, type GraphFilters } from './GraphFilterPanel';
+import GraphFilterPanel, { DEFAULT_FILTERS, ALL_EVENT_IDS, resolveTriState, type GraphFilters } from './GraphFilterPanel';
 import type { WinEvent } from '../types';
 
 function Legend() {
@@ -50,11 +50,12 @@ function ToolbarButton({ onClick, active, children }: { onClick: () => void; act
 function buildODataFilter(filters: GraphFilters): string {
   const parts: string[] = ["logName eq 'Security'"];
 
-  if (filters.eventIds.length > 0) {
-    const orClauses = filters.eventIds.map((id) => `eventId eq ${id}`).join(' or ');
+  const effectiveEventIds = resolveTriState(ALL_EVENT_IDS, filters.eventFilters);
+  if (effectiveEventIds.length > 0) {
+    const orClauses = effectiveEventIds.map((id) => `eventId eq ${id}`).join(' or ');
     parts.push(`(${orClauses})`);
   } else {
-    // No events selected — return nothing from server
+    // All events excluded — return nothing from server
     parts.push('eventId eq -1');
   }
 
@@ -98,7 +99,7 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     document.addEventListener('mouseup', onUp);
   }, [panelWidth]);
 
-  const odataFilter = useMemo(() => buildODataFilter(filters), [filters.eventIds, filters.timeRange]);
+  const odataFilter = useMemo(() => buildODataFilter(filters), [filters.eventFilters, filters.timeRange]);
 
   const { data: events, isLoading, error } = useQuery<WinEvent[]>({
     queryKey: ['events', 'security-graph', odataFilter],
@@ -133,29 +134,54 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
   const { nodes, edges } = useMemo(() => {
     let { nodes, edges } = fullGraph;
 
-    // Filter out excluded machines
-    if (filters.excludedMachines.size > 0) {
-      const excluded = filters.excludedMachines;
-      nodes = nodes.filter((n) => n.type !== 'machine' || !excluded.has(n.label));
+    // Apply machine tri-state filters (select = whitelist, exclude = blacklist)
+    if (filters.machineFilters.size > 0) {
+      const selected = new Set<string>();
+      const excluded = new Set<string>();
+      for (const [name, state] of filters.machineFilters) {
+        if (state === 'select') selected.add(name);
+        else if (state === 'exclude') excluded.add(name);
+      }
+      const nodesBefore = new Set(nodes);
+      if (selected.size > 0) {
+        nodes = nodes.filter((n) => n.type !== 'machine' || selected.has(n.label));
+      } else if (excluded.size > 0) {
+        nodes = nodes.filter((n) => n.type !== 'machine' || !excluded.has(n.label));
+      }
       const removedIds = new Set(
-        fullGraph.nodes.filter((n) => n.type === 'machine' && excluded.has(n.label)).map((n) => n.id),
+        [...nodesBefore].filter((n) => n.type === 'machine' && !nodes.includes(n)).map((n) => n.id),
       );
-      edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
+      if (removedIds.size > 0) {
+        edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
+      }
     }
 
-    // Filter out excluded users
-    if (filters.excludedUsers.size > 0) {
-      const excluded = filters.excludedUsers;
-      nodes = nodes.filter((n) => n.type !== 'user' || !excluded.has(n.label));
+    // Apply user tri-state filters (select = whitelist, exclude = blacklist)
+    if (filters.userFilters.size > 0) {
+      const selected = new Set<string>();
+      const excluded = new Set<string>();
+      for (const [name, state] of filters.userFilters) {
+        if (state === 'select') selected.add(name);
+        else if (state === 'exclude') excluded.add(name);
+      }
+      const nodesBefore = new Set(nodes);
+      if (selected.size > 0) {
+        nodes = nodes.filter((n) => n.type !== 'user' || selected.has(n.label));
+      } else if (excluded.size > 0) {
+        nodes = nodes.filter((n) => n.type !== 'user' || !excluded.has(n.label));
+      }
       const removedIds = new Set(
-        fullGraph.nodes.filter((n) => n.type === 'user' && excluded.has(n.label)).map((n) => n.id),
+        [...nodesBefore].filter((n) => n.type === 'user' && !nodes.includes(n)).map((n) => n.id),
       );
-      edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
+      if (removedIds.size > 0) {
+        edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
+      }
     }
 
-    // Filter edges by logon type (empty = show nothing)
-    const allowedTypes = new Set(filters.logonTypes);
-    edges = edges.filter((e) => e.logonType < 0 || allowedTypes.has(e.logonType));
+    // Filter edges by logon type (tri-state: select = whitelist, exclude = blacklist, off = show all)
+    const allLogonTypes = Object.keys(LOGON_TYPE_LABELS).map(Number);
+    const allowedLogonTypes = new Set(resolveTriState(allLogonTypes, filters.logonTypeFilters));
+    edges = edges.filter((e) => e.logonType < 0 || allowedLogonTypes.has(e.logonType));
 
     // Hide machine/system accounts
     if (filters.hideMachineAccounts) {
@@ -180,7 +206,7 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     nodes = nodes.filter((n) => connectedIds.has(n.id));
 
     return { nodes, edges };
-  }, [fullGraph, filters.excludedMachines, filters.excludedUsers, filters.logonTypes, filters.activityThreshold, filters.hideMachineAccounts]);
+  }, [fullGraph, filters.machineFilters, filters.userFilters, filters.logonTypeFilters, filters.activityThreshold, filters.hideMachineAccounts]);
 
   const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges, visible);
 

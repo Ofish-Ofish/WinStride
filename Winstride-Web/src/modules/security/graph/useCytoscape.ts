@@ -9,14 +9,97 @@ export interface SelectedElement {
   data: Record<string, unknown>;
 }
 
-// Simple hash to generate deterministic starting positions
-function hashCode(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+/* ── Hub-spoke position calculator ────────────────────────────────── */
+
+/** Place machines in a grid at the center, then fan users around them. */
+function computeHubSpokePositions(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+): Map<string, { x: number; y: number }> {
+  const positions = new Map<string, { x: number; y: number }>();
+
+  const machines = nodes.filter((n) => n.type === 'machine');
+  const users = nodes.filter((n) => n.type !== 'machine');
+
+  // Build adjacency: machineId → list of connected userIds
+  const machineToUsers = new Map<string, string[]>();
+  const userToMachines = new Map<string, string[]>();
+  for (const m of machines) machineToUsers.set(m.id, []);
+  for (const u of users) userToMachines.set(u.id, []);
+
+  for (const edge of edges) {
+    const src = edge.source;
+    const tgt = edge.target;
+    // edges go user→machine
+    if (machineToUsers.has(tgt) && userToMachines.has(src)) {
+      if (!machineToUsers.get(tgt)!.includes(src)) machineToUsers.get(tgt)!.push(src);
+      if (!userToMachines.get(src)!.includes(tgt)) userToMachines.get(src)!.push(tgt);
+    }
+    // handle reverse direction too
+    if (machineToUsers.has(src) && userToMachines.has(tgt)) {
+      if (!machineToUsers.get(src)!.includes(tgt)) machineToUsers.get(src)!.push(tgt);
+      if (!userToMachines.get(tgt)!.includes(src)) userToMachines.get(tgt)!.push(src);
+    }
   }
-  return h;
+
+  // Place machines in a circle at center (or single point if only one)
+  const machineSpacing = 350;
+  if (machines.length === 1) {
+    positions.set(machines[0].id, { x: 0, y: 0 });
+  } else {
+    const radius = (machines.length * machineSpacing) / (2 * Math.PI);
+    machines.forEach((m, i) => {
+      const angle = (2 * Math.PI * i) / machines.length - Math.PI / 2;
+      positions.set(m.id, {
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius,
+      });
+    });
+  }
+
+  // Place users in a circle around each machine they connect to.
+  // If a user connects to multiple machines, average the positions.
+  const spokeRadius = 250;
+  const userPositionSums = new Map<string, { x: number; y: number; count: number }>();
+
+  for (const [machineId, connectedUsers] of machineToUsers) {
+    const machinePos = positions.get(machineId)!;
+    const count = connectedUsers.length;
+    if (count === 0) continue;
+
+    connectedUsers.forEach((userId, i) => {
+      const angle = (2 * Math.PI * i) / count - Math.PI / 2;
+      const ux = machinePos.x + Math.cos(angle) * spokeRadius;
+      const uy = machinePos.y + Math.sin(angle) * spokeRadius;
+
+      const existing = userPositionSums.get(userId);
+      if (existing) {
+        existing.x += ux;
+        existing.y += uy;
+        existing.count++;
+      } else {
+        userPositionSums.set(userId, { x: ux, y: uy, count: 1 });
+      }
+    });
+  }
+
+  for (const [userId, sum] of userPositionSums) {
+    positions.set(userId, { x: sum.x / sum.count, y: sum.y / sum.count });
+  }
+
+  // Any orphan nodes without edges — place in a row below
+  let orphanX = 0;
+  for (const n of nodes) {
+    if (!positions.has(n.id)) {
+      positions.set(n.id, { x: orphanX, y: 600 });
+      orphanX += 120;
+    }
+  }
+
+  return positions;
 }
+
+/* ── Hook ─────────────────────────────────────────────────────────── */
 
 export function useCytoscape(
   containerRef: React.RefObject<HTMLDivElement | null>,
@@ -64,12 +147,13 @@ export function useCytoscape(
       return;
     }
 
+    const positions = computeHubSpokePositions(nodes, edges);
+
     cy.batch(() => {
       cy.elements().remove();
 
-      const spread = Math.max(nodes.length * 100, 2000);
       for (const node of nodes) {
-        const hash = hashCode(node.id);
+        const pos = positions.get(node.id) ?? { x: 0, y: 0 };
         cy.add({
           group: 'nodes',
           data: {
@@ -79,10 +163,7 @@ export function useCytoscape(
             privileged: node.privileged,
             logonCount: node.logonCount,
           },
-          position: {
-            x: (((hash >>> 0) % 10000) / 10000 - 0.5) * spread,
-            y: (((hash * 7 >>> 0) % 10000) / 10000 - 0.5) * spread,
-          },
+          position: { x: pos.x, y: pos.y },
         });
       }
 
@@ -106,6 +187,7 @@ export function useCytoscape(
       }
     });
 
+    // fcose refines from the hub-spoke starting positions
     cy.layout(coseLayout).run();
   }, [nodes, edges]);
 
@@ -202,14 +284,17 @@ export function useCytoscape(
     if (!cy) return;
     cy.elements().removeClass('highlighted dimmed');
     setSelected(null);
-    const spread = Math.max(cy.nodes().length * 100, 2000);
+
+    // Recompute hub-spoke positions from current graph data
+    const currentNodes: GraphNode[] = cy.nodes().map((n) => n.data() as GraphNode);
+    const currentEdges: GraphEdge[] = cy.edges().map((e) => e.data() as GraphEdge);
+    const positions = computeHubSpokePositions(currentNodes, currentEdges);
+
     cy.nodes().forEach((node) => {
-      const hash = hashCode(node.id());
-      node.position({
-        x: (((hash >>> 0) % 10000) / 10000 - 0.5) * spread,
-        y: (((hash * 7 >>> 0) % 10000) / 10000 - 0.5) * spread,
-      });
+      const pos = positions.get(node.id());
+      if (pos) node.position(pos);
     });
+
     cy.layout(coseLayout).run();
   }, []);
 
