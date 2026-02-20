@@ -6,8 +6,8 @@ interface SidebarProps {
 
 const logTypes = [
   { name: 'Security', path: '/security' },
-  { name: 'System', path: '/system' },
-  { name: 'Application', path: '/application' },
+  { name: 'PowerShell', path: '/powershell' },
+  { name: 'Sysmon', path: '/sysmon' },
 ];
 
 export default function Sidebar({ open }: SidebarProps) {

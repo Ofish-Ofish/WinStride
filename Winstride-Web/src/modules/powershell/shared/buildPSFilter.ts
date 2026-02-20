@@ -1,15 +1,15 @@
-import { resolveTriState, type GraphFilters } from './filterTypes';
-import { ALL_EVENT_IDS } from './eventMeta';
+import { resolveTriState } from '../../security/shared/filterTypes';
+import { PS_EVENT_IDS } from './eventMeta';
+import type { PSFilters } from './filterTypes';
 
-export function buildODataFilter(filters: GraphFilters, logName = 'Security'): string {
-  const parts: string[] = [`logName eq '${logName}'`];
+export function buildPSFilter(filters: PSFilters): string {
+  const parts: string[] = ["logName eq 'Microsoft-Windows-PowerShell/Operational'"];
 
-  const effectiveEventIds = resolveTriState(ALL_EVENT_IDS, filters.eventFilters);
+  const effectiveEventIds = resolveTriState(PS_EVENT_IDS, filters.eventFilters);
   if (effectiveEventIds.length > 0) {
     const orClauses = effectiveEventIds.map((id) => `eventId eq ${id}`).join(' or ');
     parts.push(`(${orClauses})`);
   } else {
-    // All events excluded — return nothing from server
     parts.push('eventId eq -1');
   }
 
