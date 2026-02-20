@@ -105,7 +105,10 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
 
   const { data: events, isLoading, error } = useQuery<WinEvent[]>({
     queryKey: ['events', 'security-graph', odataFilter],
-    queryFn: () => fetchEvents({ $filter: odataFilter }),
+    queryFn: () => fetchEvents({
+      $filter: odataFilter,
+      $select: 'eventId,machineName,timeCreated,eventData',
+    }),
     refetchInterval: 30000,
   });
 

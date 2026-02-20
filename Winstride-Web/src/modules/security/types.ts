@@ -14,9 +14,19 @@ export interface LogonInfo {
   machineName: string;
   logonType: number;
   ipAddress: string;
+  ipPort: string;
   timeCreated: string;
   eventId: number;
   subjectUserName: string;
+  subjectDomainName: string;
+  authPackage: string;
+  logonProcess: string;
+  workstationName: string;
+  processName: string;
+  keyLength: number;
+  elevatedToken: boolean;
+  failureStatus: string;
+  failureSubStatus: string;
 }
 
 export interface GraphNode {
@@ -25,6 +35,13 @@ export interface GraphNode {
   type: 'user' | 'machine';
   privileged: boolean;
   logonCount: number;
+  failedCount: number;
+  successCount: number;
+  connectedCount: number;
+  authPackages: string[];
+  hadAdminSession: boolean;
+  lastIp: string;
+  lastSeen: string;
 }
 
 export interface GraphEdge {
@@ -37,6 +54,16 @@ export interface GraphEdge {
   firstSeen: string;
   lastSeen: string;
   ipAddress: string;
+  ipPort: string;
   subjectUserName: string;
+  subjectDomainName: string;
   targetDomainName: string;
+  authPackage: string;
+  logonProcess: string;
+  workstationName: string;
+  processName: string;
+  keyLength: number;
+  elevatedToken: boolean;
+  failureStatus: string;
+  failureSubStatus: string;
 }

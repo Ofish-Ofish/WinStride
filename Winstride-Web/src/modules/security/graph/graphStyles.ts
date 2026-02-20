@@ -117,6 +117,24 @@ export const graphStyles: CyStylesheet[] = [
     },
   },
 
+  // Failed logon edges — red dashed
+  {
+    selector: 'edge[?isFailed]',
+    style: {
+      'line-color': '#6e1a1a',
+      'target-arrow-color': '#8b2525',
+      'line-style': 'dashed',
+      'line-dash-pattern': [6, 3],
+    },
+  },
+  {
+    selector: 'edge.highlighted[?isFailed]',
+    style: {
+      'line-color': '#f85149',
+      'target-arrow-color': '#f85149',
+    },
+  },
+
   // Highlighted — selected + neighbors glow in their own color
   {
     selector: 'node.highlighted',

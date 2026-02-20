@@ -167,14 +167,22 @@ export function useCytoscape(
       // Add or update nodes
       for (const node of nodes) {
         const existing = cy.getElementById(node.id);
-        if (existing.length > 0) {
-          // Update data on existing node — position stays
-          existing.data({
+        const nodeData = {
             label: node.label,
             type: node.type,
             privileged: node.privileged,
             logonCount: node.logonCount,
-          });
+            failedCount: node.failedCount,
+            successCount: node.successCount,
+            connectedCount: node.connectedCount,
+            authPackages: node.authPackages,
+            hadAdminSession: node.hadAdminSession,
+            lastIp: node.lastIp,
+            lastSeen: node.lastSeen,
+        };
+        if (existing.length > 0) {
+          // Update data on existing node — position stays
+          existing.data(nodeData);
         } else {
           // New node — place near a connected neighbor or at center
           let pos = { x: 0, y: 0 };
@@ -201,10 +209,7 @@ export function useCytoscape(
             group: 'nodes',
             data: {
               id: node.id,
-              label: node.label,
-              type: node.type,
-              privileged: node.privileged,
-              logonCount: node.logonCount,
+              ...nodeData,
             },
             position: pos,
           });
@@ -214,17 +219,30 @@ export function useCytoscape(
       // Add or update edges
       for (const edge of edges) {
         const existing = cy.getElementById(edge.id);
-        if (existing.length > 0) {
-          existing.data({
+        const isFailed = !!edge.failureStatus && edge.failureStatus !== '0x0';
+        const edgeData = {
             logonCount: edge.logonCount,
             logonType: edge.logonType,
             logonTypeLabel: edge.logonTypeLabel,
             firstSeen: edge.firstSeen,
             lastSeen: edge.lastSeen,
             ipAddress: edge.ipAddress,
+            ipPort: edge.ipPort,
             subjectUserName: edge.subjectUserName,
+            subjectDomainName: edge.subjectDomainName,
             targetDomainName: edge.targetDomainName,
-          });
+            authPackage: edge.authPackage,
+            logonProcess: edge.logonProcess,
+            workstationName: edge.workstationName,
+            processName: edge.processName,
+            keyLength: edge.keyLength,
+            elevatedToken: edge.elevatedToken,
+            failureStatus: edge.failureStatus,
+            failureSubStatus: edge.failureSubStatus,
+            isFailed,
+        };
+        if (existing.length > 0) {
+          existing.data(edgeData);
         } else {
           cy.add({
             group: 'edges',
@@ -232,14 +250,7 @@ export function useCytoscape(
               id: edge.id,
               source: edge.source,
               target: edge.target,
-              logonCount: edge.logonCount,
-              logonType: edge.logonType,
-              logonTypeLabel: edge.logonTypeLabel,
-              firstSeen: edge.firstSeen,
-              lastSeen: edge.lastSeen,
-              ipAddress: edge.ipAddress,
-              subjectUserName: edge.subjectUserName,
-              targetDomainName: edge.targetDomainName,
+              ...edgeData,
             },
           });
         }
