@@ -21,6 +21,7 @@ import {
   saveVisibleColumns,
   type SortDir,
   type ColumnDef,
+  type ParsedEventData,
 } from './listColumns';
 
 /* ------------------------------------------------------------------ */
@@ -112,14 +113,14 @@ function ColumnPicker({
 /* ------------------------------------------------------------------ */
 
 function LevelBadge({ level }: { level: string | null }) {
-  if (!level) return <span className="text-gray-600">-</span>;
+  if (!level) return <span className="text-gray-400">-</span>;
   const colors: Record<string, string> = {
-    Information: 'text-blue-400',
-    Warning: 'text-yellow-400',
+    Information: 'text-blue-300',
+    Warning: 'text-yellow-300',
     Error: 'text-red-400',
-    Critical: 'text-red-500',
+    Critical: 'text-red-300 font-semibold',
   };
-  return <span className={colors[level] ?? 'text-gray-400'}>{level}</span>;
+  return <span className={colors[level] ?? 'text-gray-200'}>{level}</span>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -147,14 +148,14 @@ function CellContent({ col, event }: { col: ColumnDef; event: WinEvent }) {
         <span className="flex items-center gap-2">
           <span className="font-mono">{event.eventId}</span>
           {label && (
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${
               event.eventId === 4625
-                ? 'bg-[#f85149]/15 text-[#f85149]'
+                ? 'bg-[#f85149]/20 text-[#ff7b72]'
                 : event.eventId === 4624
-                  ? 'bg-[#3fb950]/15 text-[#3fb950]'
+                  ? 'bg-[#3fb950]/20 text-[#56d364]'
                   : event.eventId === 4672
-                    ? 'bg-[#f0883e]/15 text-[#f0883e]'
-                    : 'bg-[#58a6ff]/10 text-[#58a6ff]'
+                    ? 'bg-[#f0883e]/20 text-[#f0a050]'
+                    : 'bg-[#58a6ff]/15 text-[#79c0ff]'
             }`}>
               {label}
             </span>
@@ -171,7 +172,31 @@ function CellContent({ col, event }: { col: ColumnDef; event: WinEvent }) {
         </span>
       );
     default:
-      return <span className="truncate">{String(col.getValue(event) || '-')}</span>;
+      return <span className="truncate text-white">{String(col.getValue(event) || '-')}</span>;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Query field resolver (for field:value search syntax)               */
+/* ------------------------------------------------------------------ */
+
+function getFieldForQuery(field: string, e: WinEvent, parsed: ParsedEventData | null, label: string): string | null {
+  switch (field) {
+    case 'event': case 'eventid': case 'id': return `${e.eventId} ${label}`;
+    case 'level': return e.level ?? '';
+    case 'machine': case 'host': return e.machineName;
+    case 'user': case 'target': return parsed?.targetUserName ?? '';
+    case 'domain': return parsed?.targetDomainName ?? '';
+    case 'subject': return parsed?.subjectUserName ?? '';
+    case 'logontype': case 'logon': case 'type': return parsed?.logonTypeLabel ?? '';
+    case 'ip': case 'address': return parsed?.ipAddress ?? '';
+    case 'port': return parsed?.ipPort ?? '';
+    case 'auth': case 'package': return parsed?.authPackage ?? '';
+    case 'process': return parsed?.processName ?? '';
+    case 'workstation': return parsed?.workstationName ?? '';
+    case 'status': case 'failure': return `${parsed?.failureStatus ?? ''} ${parsed?.failureSubStatus ?? ''}`;
+    case 'elevated': case 'admin': return parsed?.elevatedToken ? 'yes' : 'no';
+    default: return null;
   }
 }
 
@@ -250,11 +275,44 @@ export default function EventList({ visible }: { visible: boolean }) {
     enabled: visible,
   });
 
+  /* ---- Available values for filter panel ---- */
+  const { availableMachines, availableUsers, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses } = useMemo(() => {
+    if (!rawEvents) return { availableMachines: [], availableUsers: [], availableIps: [], availableAuthPackages: [], availableProcesses: [], availableFailureStatuses: [] };
+    const machines = new Set<string>();
+    const users = new Set<string>();
+    const ips = new Set<string>();
+    const authPkgs = new Set<string>();
+    const procs = new Set<string>();
+    const failStatuses = new Set<string>();
+    for (const e of rawEvents) {
+      machines.add(e.machineName);
+      const parsed = parseEventData(e);
+      if (!parsed) continue;
+      if (parsed.targetUserName) users.add(parsed.targetUserName);
+      if (parsed.ipAddress && parsed.ipAddress !== '-') ips.add(parsed.ipAddress);
+      if (parsed.authPackage) authPkgs.add(parsed.authPackage);
+      if (parsed.processName && parsed.processName !== '-') procs.add(parsed.processName);
+      if (parsed.failureStatus && parsed.failureStatus !== '0x0') failStatuses.add(parsed.failureStatus);
+      if (parsed.failureSubStatus && parsed.failureSubStatus !== '0x0') failStatuses.add(parsed.failureSubStatus);
+    }
+    return {
+      availableMachines: [...machines].sort(),
+      availableUsers: [...users].sort(),
+      availableIps: [...ips].sort(),
+      availableAuthPackages: [...authPkgs].sort(),
+      availableProcesses: [...procs].sort(),
+      availableFailureStatuses: [...failStatuses].sort(),
+    };
+  }, [rawEvents]);
+
+  const maxActivity = 50;
+
   /* ---- Client-side filtering ---- */
   const filteredEvents = useMemo(() => {
     if (!rawEvents) return [];
     let events = rawEvents;
 
+    // Logon type filter
     if (filters.logonTypeFilters.size > 0) {
       const allLogonTypes = Object.keys(LOGON_TYPE_LABELS).map(Number);
       const allowed = new Set(resolveTriState(allLogonTypes, filters.logonTypeFilters));
@@ -265,6 +323,7 @@ export default function EventList({ visible }: { visible: boolean }) {
       });
     }
 
+    // Hide machine/system accounts
     if (filters.hideMachineAccounts) {
       events = events.filter((e) => {
         const parsed = parseEventData(e);
@@ -273,6 +332,7 @@ export default function EventList({ visible }: { visible: boolean }) {
       });
     }
 
+    // Machine filter
     if (filters.machineFilters.size > 0) {
       const selected = new Set<string>();
       const excluded = new Set<string>();
@@ -287,6 +347,7 @@ export default function EventList({ visible }: { visible: boolean }) {
       }
     }
 
+    // User filter
     if (filters.userFilters.size > 0) {
       const selected = new Set<string>();
       const excluded = new Set<string>();
@@ -304,45 +365,89 @@ export default function EventList({ visible }: { visible: boolean }) {
       });
     }
 
+    // IP filter
+    if (filters.ipFilters.size > 0) {
+      const allowedIps = new Set(resolveTriState(availableIps, filters.ipFilters));
+      events = events.filter((e) => {
+        const parsed = parseEventData(e);
+        if (!parsed || !parsed.ipAddress || parsed.ipAddress === '-') return true;
+        return allowedIps.has(parsed.ipAddress);
+      });
+    }
+
+    // Auth package filter
+    if (filters.authPackageFilters.size > 0) {
+      const allowedPkgs = new Set(resolveTriState(availableAuthPackages, filters.authPackageFilters));
+      events = events.filter((e) => {
+        const parsed = parseEventData(e);
+        if (!parsed || !parsed.authPackage) return true;
+        return allowedPkgs.has(parsed.authPackage);
+      });
+    }
+
+    // Process filter
+    if (filters.processFilters.size > 0) {
+      const allowedProcs = new Set(resolveTriState(availableProcesses, filters.processFilters));
+      events = events.filter((e) => {
+        const parsed = parseEventData(e);
+        if (!parsed || !parsed.processName || parsed.processName === '-') return true;
+        return allowedProcs.has(parsed.processName);
+      });
+    }
+
+    // Failure status filter
+    if (filters.failureStatusFilters.size > 0) {
+      const allowedStatuses = new Set(resolveTriState(availableFailureStatuses, filters.failureStatusFilters));
+      events = events.filter((e) => {
+        const parsed = parseEventData(e);
+        if (!parsed) return true;
+        if ((!parsed.failureStatus || parsed.failureStatus === '0x0') && (!parsed.failureSubStatus || parsed.failureSubStatus === '0x0')) return true;
+        return allowedStatuses.has(parsed.failureStatus) || allowedStatuses.has(parsed.failureSubStatus);
+      });
+    }
+
+    // Elevated only
+    if (filters.showElevatedOnly) {
+      events = events.filter((e) => {
+        const parsed = parseEventData(e);
+        return parsed?.elevatedToken === true;
+      });
+    }
+
+    // Search — supports plain text and field:value queries
     if (debouncedSearch) {
-      const lower = debouncedSearch.toLowerCase();
+      const terms = debouncedSearch.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
       events = events.filter((e) => {
         const parsed = parseEventData(e);
         const label = EVENT_LABELS[e.eventId] ?? '';
-        const searchable = [
-          String(e.eventId),
-          label,
-          e.level ?? '',
-          parsed?.targetUserName ?? '',
-          e.machineName,
-          parsed?.logonTypeLabel ?? '',
-          parsed?.ipAddress ?? '',
-          e.timeCreated,
+        // Build full-text search string from all fields
+        const allFields = [
+          String(e.eventId), label, e.level ?? '', e.machineName, e.timeCreated,
+          parsed?.targetUserName ?? '', parsed?.targetDomainName ?? '',
+          parsed?.subjectUserName ?? '', parsed?.subjectDomainName ?? '',
+          parsed?.logonTypeLabel ?? '', parsed?.ipAddress ?? '', parsed?.ipPort ?? '',
+          parsed?.authPackage ?? '', parsed?.logonProcess ?? '',
+          parsed?.workstationName ?? '', parsed?.processName ?? '',
+          parsed?.failureStatus ?? '', parsed?.failureSubStatus ?? '',
         ].join(' ').toLowerCase();
-        return searchable.includes(lower);
+
+        return terms.every((term) => {
+          const colonIdx = term.indexOf(':');
+          if (colonIdx > 0) {
+            const field = term.slice(0, colonIdx).toLowerCase();
+            let value = term.slice(colonIdx + 1).toLowerCase().replace(/^"|"$/g, '');
+            // Map field aliases to parsed data
+            const fieldValue = getFieldForQuery(field, e, parsed, label);
+            if (fieldValue !== null) return fieldValue.toLowerCase().includes(value);
+          }
+          // Plain text — match across everything
+          return allFields.includes(term.toLowerCase().replace(/^"|"$/g, ''));
+        });
       });
     }
 
     return events;
-  }, [rawEvents, filters.logonTypeFilters, filters.hideMachineAccounts, filters.machineFilters, filters.userFilters, debouncedSearch]);
-
-  /* ---- Available machines/users for filter panel ---- */
-  const availableMachines = useMemo(() => {
-    if (!rawEvents) return [];
-    return [...new Set(rawEvents.map((e) => e.machineName))].sort();
-  }, [rawEvents]);
-
-  const availableUsers = useMemo(() => {
-    if (!rawEvents) return [];
-    const users = new Set<string>();
-    for (const e of rawEvents) {
-      const parsed = parseEventData(e);
-      if (parsed?.targetUserName) users.add(parsed.targetUserName);
-    }
-    return [...users].sort();
-  }, [rawEvents]);
-
-  const maxActivity = 50;
+  }, [rawEvents, filters, debouncedSearch, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
 
   /* ---- Sort ---- */
   const sortedEvents = useMemo(
@@ -412,10 +517,10 @@ export default function EventList({ visible }: { visible: boolean }) {
       <div className="flex items-center justify-between flex-shrink-0 mb-2 gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           {!isLoading && !error && (
-            <span className="text-[11px] text-gray-500 tabular-nums">
+            <span className="text-[11px] text-white tabular-nums">
               {filteredEvents.length.toLocaleString()} events
               {filteredEvents.length !== (rawEvents?.length ?? 0) && (
-                <span className="text-gray-600"> / {rawEvents?.length.toLocaleString()}</span>
+                <span className="text-gray-300"> / {rawEvents?.length.toLocaleString()}</span>
               )}
             </span>
           )}
@@ -434,8 +539,8 @@ export default function EventList({ visible }: { visible: boolean }) {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search events..."
-              className="pl-8 pr-3 py-1 text-[12px] bg-[#0d1117] border border-[#30363d] rounded-md text-gray-300 placeholder-gray-600 outline-none focus:border-[#58a6ff]/60 transition-colors w-52"
+              placeholder="Search... (ip:192.168 user:admin)"
+              className="pl-8 pr-3 py-1 text-[12px] bg-[#0d1117] border border-[#30363d] rounded-md text-gray-300 placeholder-gray-600 outline-none focus:border-[#58a6ff]/60 transition-colors w-64"
             />
           </div>
         </div>
@@ -476,16 +581,20 @@ export default function EventList({ visible }: { visible: boolean }) {
             </div>
           )}
           {!isLoading && !error && (
-            <>
-              {/* Header row */}
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto overflow-x-hidden gf-scrollbar"
+              onScroll={handleScroll}
+            >
+              {/* Sticky header row */}
               <div
-                className="flex-shrink-0 bg-[#161b22] border-b border-[#21262d] grid"
+                className="sticky top-0 z-10 bg-[#161b22] border-b border-[#21262d] grid"
                 style={{ gridTemplateColumns: gridTemplate }}
               >
                 {activeCols.map((col) => (
                   <div
                     key={col.key}
-                    className={`px-4 py-2.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider truncate ${
+                    className={`px-4 py-2.5 text-[11px] font-semibold text-gray-200 uppercase tracking-wider truncate ${
                       col.sortable ? 'cursor-pointer hover:text-gray-200 select-none transition-colors' : ''
                     }`}
                     onClick={col.sortable ? () => handleSort(col.key) : undefined}
@@ -496,61 +605,55 @@ export default function EventList({ visible }: { visible: boolean }) {
                 ))}
               </div>
 
-              {/* Scrollable body */}
-              <div
-                ref={scrollRef}
-                className="flex-1 overflow-y-auto overflow-x-hidden gf-scrollbar"
-                onScroll={handleScroll}
-              >
-                {sortedEvents.length === 0 ? (
-                  <div className="flex items-center justify-center py-16 text-gray-600 text-sm">
-                    {debouncedSearch
-                      ? `No events match "${debouncedSearch}"`
-                      : 'No events found. Make sure the Agent is collecting Security events.'}
-                  </div>
-                ) : (
-                  <div style={{ height: totalHeight, position: 'relative' }}>
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: startIdx * ROW_HEIGHT,
-                        left: 0,
-                        right: 0,
-                      }}
-                    >
-                      {visibleEvents.map((event) => {
-                        const isExpanded = expandedId === event.id;
-                        return (
-                          <div key={event.id}>
-                            <div
-                              onClick={() => setExpandedId(isExpanded ? null : event.id)}
-                              className={`grid cursor-pointer border-t border-[#21262d]/50 transition-colors ${
-                                isExpanded ? 'bg-[#161b22]' : 'hover:bg-[#161b22]/60'
-                              }`}
-                              style={{
-                                gridTemplateColumns: gridTemplate,
-                                height: ROW_HEIGHT,
-                                alignItems: 'center',
-                              }}
-                            >
-                              {activeCols.map((col) => (
-                                <div
-                                  key={col.key}
-                                  className="px-4 text-[12px] text-gray-300 truncate"
-                                >
-                                  <CellContent col={col} event={event} />
-                                </div>
-                              ))}
-                            </div>
-                            {isExpanded && <EventDetailRow event={event} />}
+              {/* Body */}
+              {sortedEvents.length === 0 ? (
+                <div className="flex items-center justify-center py-16 text-gray-400 text-sm">
+                  {debouncedSearch
+                    ? `No events match "${debouncedSearch}"`
+                    : 'No events found. Make sure the Agent is collecting Security events.'}
+                </div>
+              ) : (
+                <div style={{ height: totalHeight, position: 'relative' }}>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: startIdx * ROW_HEIGHT,
+                      left: 0,
+                      right: 0,
+                    }}
+                  >
+                    {visibleEvents.map((event) => {
+                      const isExpanded = expandedId === event.id;
+                      return (
+                        <div key={event.id}>
+                          <div
+                            onClick={() => setExpandedId(isExpanded ? null : event.id)}
+                            className={`grid cursor-pointer border-t border-[#21262d]/50 transition-colors ${
+                              isExpanded ? 'bg-[#161b22]' : 'hover:bg-[#161b22]/60'
+                            }`}
+                            style={{
+                              gridTemplateColumns: gridTemplate,
+                              height: ROW_HEIGHT,
+                              alignItems: 'center',
+                            }}
+                          >
+                            {activeCols.map((col) => (
+                              <div
+                                key={col.key}
+                                className="px-4 text-[12px] text-white truncate"
+                              >
+                                <CellContent col={col} event={event} />
+                              </div>
+                            ))}
                           </div>
-                        );
-                      })}
-                    </div>
+                          {isExpanded && <EventDetailRow event={event} />}
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-              </div>
-            </>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -572,6 +675,10 @@ export default function EventList({ visible }: { visible: boolean }) {
                 onFiltersChange={setFilters}
                 availableMachines={availableMachines}
                 availableUsers={availableUsers}
+                availableIps={availableIps}
+                availableAuthPackages={availableAuthPackages}
+                availableProcesses={availableProcesses}
+                availableFailureStatuses={availableFailureStatuses}
                 maxActivity={maxActivity}
               />
             </div>

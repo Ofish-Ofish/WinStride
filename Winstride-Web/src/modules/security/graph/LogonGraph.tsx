@@ -114,6 +114,34 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     return Math.max(...fullGraph.edges.map((e) => e.logonCount));
   }, [fullGraph.edges]);
 
+  // Extract available values for new filter sections
+  const availableIps = useMemo(() => {
+    const ips = new Set<string>();
+    for (const e of fullGraph.edges) if (e.ipAddress && e.ipAddress !== '-') ips.add(e.ipAddress);
+    return [...ips].sort();
+  }, [fullGraph.edges]);
+
+  const availableAuthPackages = useMemo(() => {
+    const pkgs = new Set<string>();
+    for (const e of fullGraph.edges) if (e.authPackage) pkgs.add(e.authPackage);
+    return [...pkgs].sort();
+  }, [fullGraph.edges]);
+
+  const availableProcesses = useMemo(() => {
+    const procs = new Set<string>();
+    for (const e of fullGraph.edges) if (e.processName && e.processName !== '-') procs.add(e.processName);
+    return [...procs].sort();
+  }, [fullGraph.edges]);
+
+  const availableFailureStatuses = useMemo(() => {
+    const statuses = new Set<string>();
+    for (const e of fullGraph.edges) {
+      if (e.failureStatus && e.failureStatus !== '0x0') statuses.add(e.failureStatus);
+      if (e.failureSubStatus && e.failureSubStatus !== '0x0') statuses.add(e.failureSubStatus);
+    }
+    return [...statuses].sort();
+  }, [fullGraph.edges]);
+
   // Step 2: apply client-side filters
   const { nodes, edges } = useMemo(() => {
     let { nodes, edges } = fullGraph;
@@ -174,6 +202,38 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
       edges = edges.filter((e) => !systemAccountIds.has(e.source) && !systemAccountIds.has(e.target));
     }
 
+    // Filter by IP
+    if (filters.ipFilters.size > 0) {
+      const allowedIps = new Set(resolveTriState(availableIps, filters.ipFilters));
+      edges = edges.filter((e) => !e.ipAddress || e.ipAddress === '-' || allowedIps.has(e.ipAddress));
+    }
+
+    // Filter by auth package
+    if (filters.authPackageFilters.size > 0) {
+      const allowedPkgs = new Set(resolveTriState(availableAuthPackages, filters.authPackageFilters));
+      edges = edges.filter((e) => !e.authPackage || allowedPkgs.has(e.authPackage));
+    }
+
+    // Filter by process
+    if (filters.processFilters.size > 0) {
+      const allowedProcs = new Set(resolveTriState(availableProcesses, filters.processFilters));
+      edges = edges.filter((e) => !e.processName || e.processName === '-' || allowedProcs.has(e.processName));
+    }
+
+    // Filter by failure status
+    if (filters.failureStatusFilters.size > 0) {
+      const allowedStatuses = new Set(resolveTriState(availableFailureStatuses, filters.failureStatusFilters));
+      edges = edges.filter((e) => {
+        if ((!e.failureStatus || e.failureStatus === '0x0') && (!e.failureSubStatus || e.failureSubStatus === '0x0')) return true;
+        return allowedStatuses.has(e.failureStatus) || allowedStatuses.has(e.failureSubStatus);
+      });
+    }
+
+    // Elevated only
+    if (filters.showElevatedOnly) {
+      edges = edges.filter((e) => e.elevatedToken);
+    }
+
     // Filter by activity range
     edges = edges.filter((e) =>
       e.logonCount >= filters.activityMin &&
@@ -189,7 +249,7 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     nodes = nodes.filter((n) => connectedIds.has(n.id));
 
     return { nodes, edges };
-  }, [fullGraph, filters.machineFilters, filters.userFilters, filters.logonTypeFilters, filters.activityMin, filters.activityMax, filters.hideMachineAccounts]);
+  }, [fullGraph, filters, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
 
   const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges, visible);
 
@@ -264,6 +324,10 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
                 onFiltersChange={setFilters}
                 availableMachines={availableMachines}
                 availableUsers={availableUsers}
+                availableIps={availableIps}
+                availableAuthPackages={availableAuthPackages}
+                availableProcesses={availableProcesses}
+                availableFailureStatuses={availableFailureStatuses}
                 maxActivity={maxActivity}
               />
             </div>

@@ -11,6 +11,11 @@ export interface GraphFilters {
   machineFilters: Map<string, FilterState>;
   userFilters: Map<string, FilterState>;
   logonTypeFilters: Map<number, FilterState>;
+  ipFilters: Map<string, FilterState>;
+  authPackageFilters: Map<string, FilterState>;
+  processFilters: Map<string, FilterState>;
+  failureStatusFilters: Map<string, FilterState>;
+  showElevatedOnly: boolean;
   activityMin: number; // default 1
   activityMax: number; // default Infinity (no upper cap)
   hideMachineAccounts: boolean;
@@ -24,6 +29,11 @@ export function getDefaultFilters(): GraphFilters {
     machineFilters: new Map(),
     userFilters: new Map(),
     logonTypeFilters: new Map(),
+    ipFilters: new Map(),
+    authPackageFilters: new Map(),
+    processFilters: new Map(),
+    failureStatusFilters: new Map(),
+    showElevatedOnly: false,
     activityMin: 1,
     activityMax: Infinity,
     hideMachineAccounts: true,

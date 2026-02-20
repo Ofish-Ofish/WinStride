@@ -1,4 +1,5 @@
 import type { GraphFilters, FilterState } from './filterTypes';
+import { getDefaultFilters } from './filterTypes';
 import { serializeFilters, deserializeFilters, type SerializedGraphFilters } from './filterSerializer';
 
 /* ------------------------------------------------------------------ */
@@ -27,73 +28,51 @@ function ago(ms: number): string {
   return new Date(Date.now() - ms).toISOString();
 }
 
+/** Build a preset filter set — fills in new fields from defaults automatically */
+function preset(overrides: Partial<GraphFilters>): GraphFilters {
+  return { ...getDefaultFilters(), ...overrides };
+}
+
 export const BUILTIN_PRESETS: FilterPreset[] = [
   {
     id: 'builtin:auth-only',
     name: 'Auth Only',
     builtin: true,
-    filters: {
+    filters: preset({
       eventFilters: new Map<number, FilterState>([[4624, 'select'], [4625, 'select'], [4634, 'select']]),
-      timeStart: ago(259_200_000), // 3d
-      timeEnd: '',
-      machineFilters: new Map(),
-      userFilters: new Map(),
-      logonTypeFilters: new Map(),
-      activityMin: 1,
-      activityMax: Infinity,
-      hideMachineAccounts: true,
-    },
+      timeStart: ago(259_200_000),
+    }),
   },
   {
     id: 'builtin:all-events',
     name: 'All Events',
     builtin: true,
-    filters: {
+    filters: preset({
       eventFilters: new Map(),
-      timeStart: ago(604_800_000), // 7d
-      timeEnd: '',
-      machineFilters: new Map(),
-      userFilters: new Map(),
-      logonTypeFilters: new Map(),
-      activityMin: 1,
-      activityMax: Infinity,
+      timeStart: ago(604_800_000),
       hideMachineAccounts: false,
-    },
+    }),
   },
   {
     id: 'builtin:privileges',
     name: 'Privileges',
     builtin: true,
-    filters: {
+    filters: preset({
       eventFilters: new Map<number, FilterState>([[4672, 'select'], [4648, 'select']]),
-      timeStart: ago(604_800_000), // 7d
-      timeEnd: '',
-      machineFilters: new Map(),
-      userFilters: new Map(),
-      logonTypeFilters: new Map(),
-      activityMin: 1,
-      activityMax: Infinity,
-      hideMachineAccounts: true,
-    },
+      timeStart: ago(604_800_000),
+    }),
   },
   {
     id: 'builtin:account-mgmt',
     name: 'Acct Mgmt',
     builtin: true,
-    filters: {
+    filters: preset({
       eventFilters: new Map<number, FilterState>([
         [4720, 'select'], [4722, 'select'], [4723, 'select'], [4724, 'select'],
         [4725, 'select'], [4726, 'select'], [4738, 'select'], [4740, 'select'], [4767, 'select'],
       ]),
-      timeStart: ago(1_209_600_000), // 14d
-      timeEnd: '',
-      machineFilters: new Map(),
-      userFilters: new Map(),
-      logonTypeFilters: new Map(),
-      activityMin: 1,
-      activityMax: Infinity,
-      hideMachineAccounts: true,
-    },
+      timeStart: ago(1_209_600_000),
+    }),
   },
 ];
 

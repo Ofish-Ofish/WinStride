@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount, EVENT_CATEGORIES, ALL_EVENT_IDS, ALL_LOGON_TYPES } from '../shared/eventMeta';
+import { EVENT_LABELS, LOGON_TYPE_LABELS, FAILURE_STATUS_LABELS, isSystemAccount, EVENT_CATEGORIES, ALL_EVENT_IDS, ALL_LOGON_TYPES } from '../shared/eventMeta';
 import { type FilterState, type GraphFilters, DEFAULT_FILTERS, getDefaultFilters, countVisible, resolveTriState, cycleMap } from '../shared/filterTypes';
 import PresetBar from '../shared/PresetBar';
 
@@ -35,6 +35,10 @@ interface Props {
   onFiltersChange: (f: GraphFilters) => void;
   availableMachines: string[];
   availableUsers: string[];
+  availableIps?: string[];
+  availableAuthPackages?: string[];
+  availableProcesses?: string[];
+  availableFailureStatuses?: string[];
   maxActivity: number;
 }
 
@@ -339,12 +343,18 @@ export default function GraphFilterPanel({
   onFiltersChange,
   availableMachines,
   availableUsers,
+  availableIps = [],
+  availableAuthPackages = [],
+  availableProcesses = [],
+  availableFailureStatuses = [],
   maxActivity,
 }: Props) {
   injectStyles();
 
   const [machineSearch, setMachineSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  const [ipSearch, setIpSearch] = useState('');
+  const [processSearch, setProcessSearch] = useState('');
 
   const updateFilter = <K extends keyof GraphFilters>(key: K, value: GraphFilters[K]) => {
     onFiltersChange({ ...filters, [key]: value });
@@ -415,6 +425,26 @@ export default function GraphFilterPanel({
     [visibleUsers, userSearch],
   );
   const visibleUserCount = countVisible(visibleUsers, filters.userFilters);
+
+  /* ---- IP helpers ---- */
+  const filteredIps = useMemo(
+    () => availableIps.filter((ip) => ip.toLowerCase().includes(ipSearch.toLowerCase())),
+    [availableIps, ipSearch],
+  );
+  const visibleIpCount = countVisible(availableIps, filters.ipFilters);
+
+  /* ---- Auth package helpers ---- */
+  const visibleAuthCount = countVisible(availableAuthPackages, filters.authPackageFilters);
+
+  /* ---- Process helpers ---- */
+  const filteredProcesses = useMemo(
+    () => availableProcesses.filter((p) => p.toLowerCase().includes(processSearch.toLowerCase())),
+    [availableProcesses, processSearch],
+  );
+  const visibleProcessCount = countVisible(availableProcesses, filters.processFilters);
+
+  /* ---- Failure status helpers ---- */
+  const visibleFailureCount = countVisible(availableFailureStatuses, filters.failureStatusFilters);
 
   return (
     <div className="bg-[#0d1117] border border-[#21262d] rounded-xl p-4 space-y-3">
@@ -759,6 +789,219 @@ export default function GraphFilterPanel({
           <div className="h-px bg-[#21262d]" />
         </>
       )}
+
+      {/* IPs */}
+      {availableIps.length > 0 && (
+        <>
+          <CollapsibleSection
+            title="IP Addresses"
+            defaultOpen={false}
+            right={
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] tabular-nums text-gray-600">
+                  {visibleIpCount}/{availableIps.length}
+                </span>
+                <QuickAction
+                  label="Clear"
+                  onClick={() => updateFilter('ipFilters', new Map())}
+                />
+              </div>
+            }
+          >
+            <div className="relative mb-2">
+              <svg
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-600 pointer-events-none"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <circle cx="7" cy="7" r="5" />
+                <path d="M11 11l3.5 3.5" strokeLinecap="round" />
+              </svg>
+              <input
+                type="text"
+                value={ipSearch}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setIpSearch(e.target.value)}
+                placeholder="Search..."
+                className="w-full pl-7 pr-2 py-1 text-[12px] bg-[#0d1117] border border-[#30363d] rounded text-gray-300 placeholder-gray-600 outline-none focus:border-[#58a6ff]/60 transition-colors"
+              />
+            </div>
+            <ResizableList defaultHeight={120}>
+              <div className="space-y-0.5">
+                {filteredIps.length === 0 && (
+                  <div className="text-[12px] text-gray-600 py-1">No IPs found</div>
+                )}
+                {filteredIps.map((ip) => (
+                  <TriStateCheckbox
+                    key={ip}
+                    state={filters.ipFilters.get(ip)}
+                    onCycle={() => updateFilter('ipFilters', cycleMap(filters.ipFilters, ip))}
+                    label={ip}
+                  />
+                ))}
+              </div>
+            </ResizableList>
+          </CollapsibleSection>
+
+          <div className="h-px bg-[#21262d]" />
+        </>
+      )}
+
+      {/* Auth Packages */}
+      {availableAuthPackages.length > 0 && (
+        <>
+          <CollapsibleSection
+            title="Auth Package"
+            defaultOpen={false}
+            right={
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] tabular-nums text-gray-600">
+                  {visibleAuthCount}/{availableAuthPackages.length}
+                </span>
+                <QuickAction
+                  label="Clear"
+                  onClick={() => updateFilter('authPackageFilters', new Map())}
+                />
+              </div>
+            }
+          >
+            <ResizableList defaultHeight={100}>
+              <div className="space-y-0.5">
+                {availableAuthPackages.map((pkg) => (
+                  <TriStateCheckbox
+                    key={pkg}
+                    state={filters.authPackageFilters.get(pkg)}
+                    onCycle={() => updateFilter('authPackageFilters', cycleMap(filters.authPackageFilters, pkg))}
+                    label={pkg}
+                  />
+                ))}
+              </div>
+            </ResizableList>
+          </CollapsibleSection>
+
+          <div className="h-px bg-[#21262d]" />
+        </>
+      )}
+
+      {/* Processes */}
+      {availableProcesses.length > 0 && (
+        <>
+          <CollapsibleSection
+            title="Processes"
+            defaultOpen={false}
+            right={
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] tabular-nums text-gray-600">
+                  {visibleProcessCount}/{availableProcesses.length}
+                </span>
+                <QuickAction
+                  label="Clear"
+                  onClick={() => updateFilter('processFilters', new Map())}
+                />
+              </div>
+            }
+          >
+            <div className="relative mb-2">
+              <svg
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-600 pointer-events-none"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <circle cx="7" cy="7" r="5" />
+                <path d="M11 11l3.5 3.5" strokeLinecap="round" />
+              </svg>
+              <input
+                type="text"
+                value={processSearch}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setProcessSearch(e.target.value)}
+                placeholder="Search..."
+                className="w-full pl-7 pr-2 py-1 text-[12px] bg-[#0d1117] border border-[#30363d] rounded text-gray-300 placeholder-gray-600 outline-none focus:border-[#58a6ff]/60 transition-colors"
+              />
+            </div>
+            <ResizableList defaultHeight={120}>
+              <div className="space-y-0.5">
+                {filteredProcesses.length === 0 && (
+                  <div className="text-[12px] text-gray-600 py-1">No processes found</div>
+                )}
+                {filteredProcesses.map((proc) => (
+                  <TriStateCheckbox
+                    key={proc}
+                    state={filters.processFilters.get(proc)}
+                    onCycle={() => updateFilter('processFilters', cycleMap(filters.processFilters, proc))}
+                    label={proc.replace(/^.*[/\\]/, '')}
+                    sub={proc.includes('\\') || proc.includes('/') ? proc : undefined}
+                  />
+                ))}
+              </div>
+            </ResizableList>
+          </CollapsibleSection>
+
+          <div className="h-px bg-[#21262d]" />
+        </>
+      )}
+
+      {/* Failure Status */}
+      {availableFailureStatuses.length > 0 && (
+        <>
+          <CollapsibleSection
+            title="Failure Status"
+            defaultOpen={false}
+            right={
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] tabular-nums text-gray-600">
+                  {visibleFailureCount}/{availableFailureStatuses.length}
+                </span>
+                <QuickAction
+                  label="Clear"
+                  onClick={() => updateFilter('failureStatusFilters', new Map())}
+                />
+              </div>
+            }
+          >
+            <ResizableList defaultHeight={120}>
+              <div className="space-y-0.5">
+                {availableFailureStatuses.map((status) => (
+                  <TriStateCheckbox
+                    key={status}
+                    state={filters.failureStatusFilters.get(status)}
+                    onCycle={() => updateFilter('failureStatusFilters', cycleMap(filters.failureStatusFilters, status))}
+                    label={status}
+                    sub={FAILURE_STATUS_LABELS[status.toLowerCase()]}
+                  />
+                ))}
+              </div>
+            </ResizableList>
+          </CollapsibleSection>
+
+          <div className="h-px bg-[#21262d]" />
+        </>
+      )}
+
+      {/* Elevated Token */}
+      <div
+        onClick={(e) => { e.stopPropagation(); updateFilter('showElevatedOnly', !filters.showElevatedOnly); }}
+        className="flex items-center gap-2 py-1 cursor-pointer select-none"
+      >
+        <div
+          className={`relative w-7 h-4 rounded-full transition-colors flex-shrink-0 ${
+            filters.showElevatedOnly ? 'bg-[#58a6ff]' : 'bg-[#30363d]'
+          }`}
+        >
+          <span
+            className={`absolute top-[2px] left-[2px] w-3 h-3 rounded-full bg-white shadow transition-transform ${
+              filters.showElevatedOnly ? 'translate-x-[12px]' : 'translate-x-0'
+            }`}
+          />
+        </div>
+        <span className="text-[11px] text-gray-300">Elevated / Admin only</span>
+      </div>
+
+      <div className="h-px bg-[#21262d]" />
 
       {/* Reset */}
       <button

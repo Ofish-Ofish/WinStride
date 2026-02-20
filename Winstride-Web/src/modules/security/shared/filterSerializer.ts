@@ -11,6 +11,11 @@ export interface SerializedGraphFilters {
   machineFilters: [string, FilterState][];
   userFilters: [string, FilterState][];
   logonTypeFilters: [number, FilterState][];
+  ipFilters?: [string, FilterState][];
+  authPackageFilters?: [string, FilterState][];
+  processFilters?: [string, FilterState][];
+  failureStatusFilters?: [string, FilterState][];
+  showElevatedOnly?: boolean;
   activityMin: number;
   activityMax: number;    // Infinity stored as null in JSON
   hideMachineAccounts: boolean;
@@ -35,6 +40,11 @@ export function serializeFilters(f: GraphFilters): SerializedGraphFilters {
     machineFilters: [...f.machineFilters.entries()],
     userFilters: [...f.userFilters.entries()],
     logonTypeFilters: [...f.logonTypeFilters.entries()],
+    ipFilters: [...f.ipFilters.entries()],
+    authPackageFilters: [...f.authPackageFilters.entries()],
+    processFilters: [...f.processFilters.entries()],
+    failureStatusFilters: [...f.failureStatusFilters.entries()],
+    showElevatedOnly: f.showElevatedOnly,
     activityMin: f.activityMin,
     activityMax: f.activityMax === Infinity ? (null as unknown as number) : f.activityMax,
     hideMachineAccounts: f.hideMachineAccounts,
@@ -49,6 +59,11 @@ export function deserializeFilters(s: SerializedGraphFilters): GraphFilters {
     machineFilters: new Map(s.machineFilters),
     userFilters: new Map(s.userFilters),
     logonTypeFilters: new Map(s.logonTypeFilters),
+    ipFilters: new Map(s.ipFilters ?? []),
+    authPackageFilters: new Map(s.authPackageFilters ?? []),
+    processFilters: new Map(s.processFilters ?? []),
+    failureStatusFilters: new Map(s.failureStatusFilters ?? []),
+    showElevatedOnly: s.showElevatedOnly ?? false,
     activityMin: s.activityMin,
     activityMax: s.activityMax == null ? Infinity : s.activityMax,
     hideMachineAccounts: s.hideMachineAccounts,
