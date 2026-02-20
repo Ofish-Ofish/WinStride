@@ -1,5 +1,5 @@
 import type { SelectedElement } from './useCytoscape';
-import { FAILURE_STATUS_LABELS } from './transformEvents';
+import { FAILURE_STATUS_LABELS } from '../shared/eventMeta';
 
 const TYPE_COLORS: Record<string, string> = {
   user: '#58a6ff',

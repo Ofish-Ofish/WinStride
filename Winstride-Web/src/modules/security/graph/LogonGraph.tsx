@@ -4,9 +4,11 @@ import { fetchEvents } from '../../../api/client';
 import { transformEvents, isSystemAccount, LOGON_TYPE_LABELS } from './transformEvents';
 import { useCytoscape } from './useCytoscape';
 import NodeDetailPanel from './NodeDetailPanel';
-import GraphFilterPanel, { DEFAULT_FILTERS, ALL_EVENT_IDS, resolveTriState, type GraphFilters } from './GraphFilterPanel';
-import { loadFiltersFromStorage, saveFiltersToStorage } from './filterSerializer';
-import type { WinEvent } from '../types';
+import GraphFilterPanel from './GraphFilterPanel';
+import { DEFAULT_FILTERS, resolveTriState, type GraphFilters } from '../shared/filterTypes';
+import { ALL_EVENT_IDS } from '../shared/eventMeta';
+import { loadFiltersFromStorage, saveFiltersToStorage } from '../shared/filterSerializer';
+import type { WinEvent } from '../shared/types';
 
 function Legend() {
   return (

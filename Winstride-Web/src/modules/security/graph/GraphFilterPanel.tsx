@@ -1,40 +1,15 @@
 import { useState, useMemo, useCallback } from 'react';
-import { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount } from './transformEvents';
-import PresetBar from './PresetBar';
+import { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount, EVENT_CATEGORIES, ALL_EVENT_IDS, ALL_LOGON_TYPES } from '../shared/eventMeta';
+import { type FilterState, type GraphFilters, DEFAULT_FILTERS, getDefaultFilters, countVisible, resolveTriState, cycleMap } from '../shared/filterTypes';
+import PresetBar from '../shared/PresetBar';
+
+// Re-export shared symbols for existing consumers
+export { type FilterState, type GraphFilters, DEFAULT_FILTERS, getDefaultFilters, countVisible, resolveTriState } from '../shared/filterTypes';
+export { ALL_EVENT_IDS } from '../shared/eventMeta';
 
 /* ------------------------------------------------------------------ */
-/*  Types & Constants                                                  */
+/*  Constants                                                          */
 /* ------------------------------------------------------------------ */
-
-export type FilterState = 'select' | 'exclude';
-
-export interface GraphFilters {
-  eventFilters: Map<number, FilterState>;
-  timeStart: string;   // ISO string or '' (unbounded = all time)
-  timeEnd: string;     // ISO string or '' (unbounded = now)
-  machineFilters: Map<string, FilterState>;
-  userFilters: Map<string, FilterState>;
-  logonTypeFilters: Map<number, FilterState>;
-  activityMin: number; // default 1
-  activityMax: number; // default Infinity (no upper cap)
-  hideMachineAccounts: boolean;
-}
-
-export function getDefaultFilters(): GraphFilters {
-  return {
-    eventFilters: new Map<number, FilterState>([[4624, 'select'], [4625, 'select'], [4634, 'select']]),
-    timeStart: new Date(Date.now() - 259_200_000).toISOString(), // 3d ago
-    timeEnd: '',
-    machineFilters: new Map(),
-    userFilters: new Map(),
-    logonTypeFilters: new Map(),
-    activityMin: 1,
-    activityMax: Infinity,
-    hideMachineAccounts: true,
-  };
-}
-
-export const DEFAULT_FILTERS: GraphFilters = getDefaultFilters();
 
 /** Dual slider steps — left = furthest back, right = most recent */
 const TIME_DUAL_STEPS: { label: string; offset: number }[] = [
@@ -54,18 +29,6 @@ const TIME_DUAL_STEPS: { label: string; offset: number }[] = [
 ];
 
 const ACTIVITY_SLIDER_CAP = 50;
-
-const EVENT_CATEGORIES: { name: string; ids: number[] }[] = [
-  { name: 'Authentication', ids: [4624, 4625, 4634, 4647, 4648] },
-  { name: 'Privileges', ids: [4672] },
-  { name: 'Account Mgmt', ids: [4720, 4722, 4723, 4724, 4725, 4726, 4738, 4740, 4767] },
-  { name: 'Group Changes', ids: [4728, 4732, 4733, 4756] },
-  { name: 'Kerberos & NTLM', ids: [4768, 4769, 4776] },
-  { name: 'Object Access', ids: [4662, 4798, 4799, 5379] },
-];
-
-export const ALL_EVENT_IDS = Object.keys(EVENT_LABELS).map(Number);
-const ALL_LOGON_TYPES = Object.keys(LOGON_TYPE_LABELS).map(Number);
 
 interface Props {
   filters: GraphFilters;
@@ -110,31 +73,6 @@ function injectStyles() {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-export function countVisible<T>(items: T[], filterMap: Map<T, FilterState>): number {
-  const selected = items.filter((i) => filterMap.get(i) === 'select');
-  if (selected.length > 0) return selected.length;
-  const excluded = items.filter((i) => filterMap.get(i) === 'exclude');
-  return items.length - excluded.length;
-}
-
-/** Resolve a tri-state Map into the effective set of allowed items. */
-export function resolveTriState<T>(allItems: T[], filterMap: Map<T, FilterState>): T[] {
-  const selected = allItems.filter((i) => filterMap.get(i) === 'select');
-  if (selected.length > 0) return selected;
-  const excludedSet = new Set(allItems.filter((i) => filterMap.get(i) === 'exclude'));
-  if (excludedSet.size > 0) return allItems.filter((i) => !excludedSet.has(i));
-  return allItems;
-}
-
-function cycleMap<T>(map: Map<T, FilterState>, key: T): Map<T, FilterState> {
-  const next = new Map(map);
-  const current = next.get(key);
-  if (current === undefined) next.set(key, 'select');
-  else if (current === 'select') next.set(key, 'exclude');
-  else next.delete(key);
-  return next;
-}
 
 function getCategoryState(ids: number[], filterMap: Map<number, FilterState>): FilterState | 'mixed' | undefined {
   const states = ids.map((id) => filterMap.get(id));

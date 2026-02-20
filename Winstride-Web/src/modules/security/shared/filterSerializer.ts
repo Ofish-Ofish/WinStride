@@ -1,4 +1,4 @@
-import type { GraphFilters, FilterState } from './GraphFilterPanel';
+import type { GraphFilters, FilterState } from './filterTypes';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -12,7 +12,7 @@ export interface SerializedGraphFilters {
   userFilters: [string, FilterState][];
   logonTypeFilters: [number, FilterState][];
   activityMin: number;
-  activityMax: number | null; // null = Infinity (unbounded)
+  activityMax: number;    // Infinity stored as null in JSON
   hideMachineAccounts: boolean;
 }
 
@@ -36,7 +36,7 @@ export function serializeFilters(f: GraphFilters): SerializedGraphFilters {
     userFilters: [...f.userFilters.entries()],
     logonTypeFilters: [...f.logonTypeFilters.entries()],
     activityMin: f.activityMin,
-    activityMax: f.activityMax === Infinity ? null : f.activityMax,
+    activityMax: f.activityMax === Infinity ? (null as unknown as number) : f.activityMax,
     hideMachineAccounts: f.hideMachineAccounts,
   };
 }
@@ -50,7 +50,7 @@ export function deserializeFilters(s: SerializedGraphFilters): GraphFilters {
     userFilters: new Map(s.userFilters),
     logonTypeFilters: new Map(s.logonTypeFilters),
     activityMin: s.activityMin,
-    activityMax: s.activityMax === null ? Infinity : s.activityMax,
+    activityMax: s.activityMax == null ? Infinity : s.activityMax,
     hideMachineAccounts: s.hideMachineAccounts,
   };
 }

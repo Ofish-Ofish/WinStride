@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import cytoscape, { type Core, type EventObject } from 'cytoscape';
 import { graphStyles } from './graphStyles';
 import { coseLayout } from './graphLayout';
-import type { GraphNode, GraphEdge } from '../types';
+import type { GraphNode, GraphEdge } from '../shared/types';
 
 export interface SelectedElement {
   type: 'node' | 'edge';

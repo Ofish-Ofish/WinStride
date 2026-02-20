@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { GraphFilters } from './GraphFilterPanel';
+import type { GraphFilters } from './filterTypes';
 import { serializeFilters, validateFilterExport, deserializeFilters, type FilterExport } from './filterSerializer';
 import {
   BUILTIN_PRESETS,
   loadCustomPresets,
   saveCustomPreset,
   deleteCustomPreset,
-  applyPreset,
   type FilterPreset,
 } from './filterPresets';
 
@@ -65,8 +64,15 @@ export default function PresetBar({ filters, onFiltersChange }: Props) {
   const activeId = allPresets.find((p) => filtersMatch(p.filters, filters))?.id ?? null;
 
   /* ---- Preset actions ---- */
-  const applyPresetFn = (p: FilterPreset) => {
-    onFiltersChange(applyPreset(p));
+  const applyPreset = (p: FilterPreset) => {
+    // Deep-clone Maps so each application is independent
+    onFiltersChange({
+      ...p.filters,
+      eventFilters: new Map(p.filters.eventFilters),
+      machineFilters: new Map(p.filters.machineFilters),
+      userFilters: new Map(p.filters.userFilters),
+      logonTypeFilters: new Map(p.filters.logonTypeFilters),
+    });
   };
 
   const handleSave = () => {
@@ -153,7 +159,7 @@ export default function PresetBar({ filters, onFiltersChange }: Props) {
           {BUILTIN_PRESETS.map((p) => (
             <button
               key={p.id}
-              onClick={() => applyPresetFn(p)}
+              onClick={() => applyPreset(p)}
               className={activeId === p.id ? activeBtnClass : btnClass}
             >
               {p.name}
@@ -170,7 +176,7 @@ export default function PresetBar({ filters, onFiltersChange }: Props) {
             {customPresets.map((p) => (
               <span key={p.id} className="inline-flex items-center gap-0.5">
                 <button
-                  onClick={() => applyPresetFn(p)}
+                  onClick={() => applyPreset(p)}
                   className={activeId === p.id ? activeBtnClass : btnClass}
                 >
                   {p.name}
