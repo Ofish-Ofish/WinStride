@@ -1,5 +1,6 @@
 import type { WinEvent, LogonInfo, GraphNode, GraphEdge } from '../shared/types';
 import { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount } from '../shared/eventMeta';
+import { getDataField } from '../../../shared/eventParsing';
 
 // Re-export shared symbols so existing consumers don't all break at once
 export { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount };
@@ -11,20 +12,6 @@ const PRIVILEGED_USERS = new Set([
   'admin',
   'ADMIN',
 ]);
-
-function getDataField(dataArray: unknown[], fieldName: string): string {
-  if (!Array.isArray(dataArray)) return '';
-  for (const item of dataArray) {
-    if (
-      item &&
-      typeof item === 'object' &&
-      (item as Record<string, string>)['@Name'] === fieldName
-    ) {
-      return (item as Record<string, string>)['#text'] ?? '';
-    }
-  }
-  return '';
-}
 
 function getEdgeLabel(eventId: number, logonType: number): string {
   const base = EVENT_LABELS[eventId] ?? `Event ${eventId}`;

@@ -1,38 +1,7 @@
-import { useState } from 'react';
 import type { WinEvent } from '../shared/types';
 import { LOGON_TYPE_LABELS, FAILURE_STATUS_LABELS } from '../shared/eventMeta';
 import { parseEventData } from './listColumns';
-
-/* ------------------------------------------------------------------ */
-/*  Subcomponents                                                      */
-/* ------------------------------------------------------------------ */
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  if (!value) return null;
-  return (
-    <div className="flex justify-between items-baseline py-1.5 border-b border-[#21262d]/60">
-      <span className="text-[11px] text-gray-200 uppercase tracking-wider shrink-0 mr-4">{label}</span>
-      <span className="text-[12px] text-white font-mono text-right break-all">{value}</span>
-    </div>
-  );
-}
-
-function Badge({ children, color }: { children: React.ReactNode; color: string }) {
-  return (
-    <span
-      className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-      style={{ background: `${color}20`, color }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-[10px] text-[#58a6ff] uppercase tracking-widest mt-3 mb-1 font-semibold">{children}</div>
-  );
-}
+import { Row, SectionLabel, Badge, RawDataToggle } from '../../../components/list/DetailPrimitives';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -140,7 +109,6 @@ function extractAllFields(raw: unknown): { name: string; value: string }[] {
 
 /** Format known coded values into readable text */
 function formatFieldValue(name: string, value: string): string {
-  // Impersonation levels
   if (name === 'ImpersonationLevel') {
     const levels: Record<string, string> = {
       '%%1832': 'Identification',
@@ -150,12 +118,10 @@ function formatFieldValue(name: string, value: string): string {
     };
     return levels[value] ?? value;
   }
-  // Virtual account / restricted admin yes/no
   if (name === 'VirtualAccount' || name === 'RestrictedAdminMode') {
     if (value === '%%1843') return 'No';
     if (value === '%%1842') return 'Yes';
   }
-  // Kerberos encryption types
   if (name === 'TicketEncryptionType') {
     const types: Record<string, string> = {
       '0x1': 'DES-CBC-CRC',
@@ -175,7 +141,6 @@ function formatFieldValue(name: string, value: string): string {
 /* ------------------------------------------------------------------ */
 
 export default function EventDetailRow({ event }: { event: WinEvent }) {
-  const [showRaw, setShowRaw] = useState(false);
   const data = parseEventData(event);
 
   if (!data) {
@@ -281,20 +246,7 @@ export default function EventDetailRow({ event }: { event: WinEvent }) {
         </div>
       )}
 
-      {/* Raw data toggle */}
-      <div className="border-t border-[#21262d] px-4 py-2">
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowRaw(!showRaw); }}
-          className="text-[11px] text-gray-200 hover:text-white transition-colors"
-        >
-          {showRaw ? 'Hide' : 'Show'} raw eventData
-        </button>
-        {showRaw && (
-          <pre className="mt-2 p-3 bg-[#161b22] border border-[#21262d] rounded text-[11px] text-gray-200 font-mono overflow-x-auto max-h-60 overflow-y-auto">
-            {JSON.stringify(data.raw, null, 2)}
-          </pre>
-        )}
-      </div>
+      <RawDataToggle raw={data.raw} />
     </div>
   );
 }

@@ -1,39 +1,10 @@
 import type { WinEvent } from '../../security/shared/types';
 import type { ParsedProcessCreate, ParsedNetworkConnect, ParsedFileCreate } from './types';
+import { getDataField, getDataArray } from '../../../shared/eventParsing';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-function getDataField(dataArray: unknown[], fieldName: string): string {
-  if (!Array.isArray(dataArray)) return '';
-  for (const item of dataArray) {
-    if (
-      item &&
-      typeof item === 'object' &&
-      (item as Record<string, string>)['@Name'] === fieldName
-    ) {
-      return (item as Record<string, string>)['#text'] ?? '';
-    }
-  }
-  return '';
-}
-
-function getDataArray(event: WinEvent): unknown[] | null {
-  if (!event.eventData) return null;
-  try {
-    const parsed = JSON.parse(event.eventData);
-    const eventObj = parsed?.Event ?? parsed;
-    const eventData = eventObj?.EventData;
-    if (!eventData) return null;
-    let dataArray = eventData.Data;
-    if (!dataArray) return null;
-    if (!Array.isArray(dataArray)) dataArray = [dataArray];
-    return dataArray;
-  } catch {
-    return null;
-  }
-}
 
 function basename(path: string): string {
   const parts = path.replace(/\\/g, '/').split('/');

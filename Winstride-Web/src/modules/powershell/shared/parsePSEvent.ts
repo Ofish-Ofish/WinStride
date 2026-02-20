@@ -1,4 +1,5 @@
 import type { WinEvent } from '../../security/shared/types';
+import { getDataField, getDataArray } from '../../../shared/eventParsing';
 import { SUSPICIOUS_KEYWORDS } from './eventMeta';
 
 /* ------------------------------------------------------------------ */
@@ -27,36 +28,6 @@ export interface ParsedCommandExecution {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-function getDataField(dataArray: unknown[], fieldName: string): string {
-  if (!Array.isArray(dataArray)) return '';
-  for (const item of dataArray) {
-    if (
-      item &&
-      typeof item === 'object' &&
-      (item as Record<string, string>)['@Name'] === fieldName
-    ) {
-      return (item as Record<string, string>)['#text'] ?? '';
-    }
-  }
-  return '';
-}
-
-function getDataArray(event: WinEvent): unknown[] | null {
-  if (!event.eventData) return null;
-  try {
-    const parsed = JSON.parse(event.eventData);
-    const eventObj = parsed?.Event ?? parsed;
-    const eventData = eventObj?.EventData;
-    if (!eventData) return null;
-    let dataArray = eventData.Data;
-    if (!dataArray) return null;
-    if (!Array.isArray(dataArray)) dataArray = [dataArray];
-    return dataArray;
-  } catch {
-    return null;
-  }
-}
 
 /** Scan script text for suspicious keywords, return matches (case-insensitive). */
 export function findSuspiciousKeywords(text: string): string[] {

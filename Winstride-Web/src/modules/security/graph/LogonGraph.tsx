@@ -10,6 +10,7 @@ import { ALL_EVENT_IDS } from '../shared/eventMeta';
 import { loadFiltersFromStorage, saveFiltersToStorage } from '../shared/filterSerializer';
 import { buildODataFilter } from '../shared/buildODataFilter';
 import type { WinEvent } from '../shared/types';
+import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
 
 function Legend() {
   return (
@@ -33,21 +34,6 @@ function Legend() {
         Machine
       </span>
     </div>
-  );
-}
-
-function ToolbarButton({ onClick, active, children }: { onClick: () => void; active?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1 text-[11px] rounded-md border transition-all duration-150 ${
-        active
-          ? 'text-[#58a6ff] bg-[#58a6ff]/10 border-[#58a6ff]/40'
-          : 'text-gray-400 hover:text-gray-200 bg-[#161b22] hover:bg-[#1c2128] border-[#30363d]'
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

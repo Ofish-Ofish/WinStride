@@ -1,35 +1,17 @@
-import { useState } from 'react';
 import type { WinEvent } from '../../security/shared/types';
 import { parseScriptBlock, parseCommandExecution, findSuspiciousKeywords } from '../shared/parsePSEvent';
+import { Row, SectionLabel, RawDataToggle } from '../../../components/list/DetailPrimitives';
 
 /* ------------------------------------------------------------------ */
-/*  Subcomponents                                                      */
+/*  Highlighted script text                                            */
 /* ------------------------------------------------------------------ */
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  if (!value) return null;
-  return (
-    <div className="flex justify-between items-baseline py-1.5 border-b border-[#21262d]/60">
-      <span className="text-[11px] text-gray-200 uppercase tracking-wider shrink-0 mr-4">{label}</span>
-      <span className="text-[12px] text-white font-mono text-right break-all">{value}</span>
-    </div>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-[10px] text-[#58a6ff] uppercase tracking-widest mt-3 mb-1 font-semibold">{children}</div>
-  );
-}
-
-/** Highlight suspicious keywords in script text. */
 function HighlightedScript({ text }: { text: string }) {
   const keywords = findSuspiciousKeywords(text);
   if (keywords.length === 0) {
     return <>{text}</>;
   }
 
-  // Build a regex matching all keywords (case-insensitive)
   const pattern = new RegExp(`(${keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
   const parts = text.split(pattern);
 
@@ -52,8 +34,6 @@ function HighlightedScript({ text }: { text: string }) {
 /* ------------------------------------------------------------------ */
 
 export default function PSDetailRow({ event }: { event: WinEvent }) {
-  const [showRaw, setShowRaw] = useState(false);
-
   if (event.eventId === 4104) {
     const sb = parseScriptBlock(event);
     if (!sb) {
@@ -105,20 +85,7 @@ export default function PSDetailRow({ event }: { event: WinEvent }) {
           </pre>
         </div>
 
-        {/* Raw data toggle */}
-        <div className="border-t border-[#21262d] px-4 py-2">
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowRaw(!showRaw); }}
-            className="text-[11px] text-gray-200 hover:text-white transition-colors"
-          >
-            {showRaw ? 'Hide' : 'Show'} raw eventData
-          </button>
-          {showRaw && event.eventData && (
-            <pre className="mt-2 p-3 bg-[#161b22] border border-[#21262d] rounded text-[11px] text-gray-200 font-mono overflow-x-auto max-h-60 overflow-y-auto">
-              {JSON.stringify(JSON.parse(event.eventData), null, 2)}
-            </pre>
-          )}
-        </div>
+        <RawDataToggle raw={event.eventData} />
       </div>
     );
   }
@@ -167,20 +134,7 @@ export default function PSDetailRow({ event }: { event: WinEvent }) {
           </div>
         </div>
 
-        {/* Raw data toggle */}
-        <div className="border-t border-[#21262d] px-4 py-2">
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowRaw(!showRaw); }}
-            className="text-[11px] text-gray-200 hover:text-white transition-colors"
-          >
-            {showRaw ? 'Hide' : 'Show'} raw eventData
-          </button>
-          {showRaw && event.eventData && (
-            <pre className="mt-2 p-3 bg-[#161b22] border border-[#21262d] rounded text-[11px] text-gray-200 font-mono overflow-x-auto max-h-60 overflow-y-auto">
-              {JSON.stringify(JSON.parse(event.eventData), null, 2)}
-            </pre>
-          )}
-        </div>
+        <RawDataToggle raw={event.eventData} />
       </div>
     );
   }

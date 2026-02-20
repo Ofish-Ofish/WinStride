@@ -7,9 +7,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace WinStride_Api.Controllers
 {
+    // OData controller for GET queries
     public class EventController : ODataController
     {
-
         private readonly ApplicationDbContext _context;
 
         public EventController(ApplicationDbContext context)
@@ -17,7 +17,26 @@ namespace WinStride_Api.Controllers
             _context = context;
         }
 
-        [HttpGet("api/Event/health")]
+        [EnableQuery(MaxTop = 5000, MaxNodeCount = 500)]
+        public IQueryable<WinEvent> Get()
+        {
+            return _context.WinEvents.OrderByDescending(e => e.TimeCreated);
+        }
+    }
+
+    // Plain MVC controller for non-OData endpoints
+    [ApiController]
+    [Route("api/[controller]")]
+    public class EventIngestController : ControllerBase
+    {
+        private readonly ApplicationDbContext _context;
+
+        public EventIngestController(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
+        [HttpGet("health")]
         public async Task<IActionResult> CheckHealth()
         {
             bool isDbUp = await _context.Database.CanConnectAsync();
@@ -27,17 +46,12 @@ namespace WinStride_Api.Controllers
                 return StatusCode(503, "Database connection unavailable.");
             }
 
-            return Ok(new { status = "Healthy", timestamp = DateTime.UtcNow});
+            return Ok(new { status = "Healthy", timestamp = DateTime.UtcNow });
         }
 
-        [EnableQuery(MaxTop = 5000, MaxNodeCount = 500)]
-        public IQueryable<WinEvent> Get()
-        {
-            return _context.WinEvents.OrderByDescending(e => e.TimeCreated);
-        }
-
-        [HttpPost("api/Event")]
-        public async Task<ActionResult> PostWinEvents(List<WinEvent> winEvents)
+        [HttpPost]
+        [HttpPost("/api/Event")]
+        public async Task<ActionResult> PostWinEvents([FromBody] List<WinEvent> winEvents)
         {
             if (winEvents == null || !winEvents.Any())
             {

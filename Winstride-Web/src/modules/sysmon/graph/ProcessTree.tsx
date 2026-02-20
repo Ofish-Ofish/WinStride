@@ -12,6 +12,7 @@ import { buildProcessTree, type ProcessNode } from './transformSysmon';
 import { processTreeStyles, processTreeLayout } from './processTreeStyles';
 import type { WinEvent } from '../../security/shared/types';
 import { resolveTriState } from '../../../components/filter/filterPrimitives';
+import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
 
 /* ------------------------------------------------------------------ */
 /*  Legend                                                              */
@@ -41,21 +42,6 @@ function Legend() {
         File
       </span>
     </div>
-  );
-}
-
-function ToolbarButton({ onClick, active, children }: { onClick: () => void; active?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1 text-[11px] rounded-md border transition-all duration-150 ${
-        active
-          ? 'text-[#58a6ff] bg-[#58a6ff]/10 border-[#58a6ff]/40'
-          : 'text-gray-400 hover:text-gray-200 bg-[#161b22] hover:bg-[#1c2128] border-[#30363d]'
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
