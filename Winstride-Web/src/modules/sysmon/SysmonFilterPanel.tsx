@@ -280,11 +280,12 @@ export default function SysmonFilterPanel({
             type="range"
             className="gf-slider-dual"
             min={0}
-            max={TIME_DUAL_STEPS.length - 1}
+            max={timeMaxIdx}
             step={1}
             value={timeStartIdx}
             onChange={(e) => {
               const idx = Math.min(Number(e.target.value), timeEndIdx);
+              setTimeStartIdx(idx);
               const step = TIME_DUAL_STEPS[idx];
               updateFilter('timeStart', step.offset === Infinity ? '' : new Date(Date.now() - step.offset).toISOString());
             }}
@@ -293,11 +294,12 @@ export default function SysmonFilterPanel({
             type="range"
             className="gf-slider-dual"
             min={0}
-            max={TIME_DUAL_STEPS.length - 1}
+            max={timeMaxIdx}
             step={1}
             value={timeEndIdx}
             onChange={(e) => {
               const idx = Math.max(Number(e.target.value), timeStartIdx);
+              setTimeEndIdx(idx);
               const step = TIME_DUAL_STEPS[idx];
               updateFilter('timeEnd', step.offset === 0 ? '' : new Date(Date.now() - step.offset).toISOString());
             }}

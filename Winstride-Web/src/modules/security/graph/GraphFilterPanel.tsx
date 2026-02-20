@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { EVENT_LABELS, LOGON_TYPE_LABELS, FAILURE_STATUS_LABELS, isSystemAccount, EVENT_CATEGORIES, ALL_EVENT_IDS, ALL_LOGON_TYPES } from '../shared/eventMeta';
 import { type FilterState, type GraphFilters, DEFAULT_FILTERS, getDefaultFilters, countVisible, resolveTriState, cycleMap } from '../shared/filterTypes';
 import PresetBar from '../shared/PresetBar';
@@ -360,46 +360,68 @@ export default function GraphFilterPanel({
     onFiltersChange({ ...filters, [key]: value });
   };
 
-  /* ---- Time dual slider ---- */
-  const timeStartIdx = useMemo(() => {
-    if (!filters.timeStart) return 0; // "All"
-    const elapsed = Date.now() - new Date(filters.timeStart).getTime();
-    for (let i = 1; i < TIME_DUAL_STEPS.length - 1; i++) {
-      if (Math.abs(elapsed - TIME_DUAL_STEPS[i].offset) < 300_000) return i;
+  /* ---- Time dual slider (local state to avoid round-trip jitter) ---- */
+  const timeMaxIdx = TIME_DUAL_STEPS.length - 1;
+
+  function timeOffsetToIdx(isoStr: string, fallback: number): number {
+    if (!isoStr) return fallback;
+    const elapsed = Date.now() - new Date(isoStr).getTime();
+    let best = fallback;
+    let bestDiff = Infinity;
+    for (let i = 0; i <= timeMaxIdx; i++) {
+      const diff = Math.abs(elapsed - TIME_DUAL_STEPS[i].offset);
+      if (diff < bestDiff) { bestDiff = diff; best = i; }
     }
-    return 0;
+    return best;
+  }
+
+  const [timeStartIdx, setTimeStartIdx] = useState(() => timeOffsetToIdx(filters.timeStart, 0));
+  const [timeEndIdx, setTimeEndIdx] = useState(() => timeOffsetToIdx(filters.timeEnd, timeMaxIdx));
+
+  // Sync from parent on meaningful external changes (e.g. preset load, reset)
+  useEffect(() => {
+    const incoming = timeOffsetToIdx(filters.timeStart, 0);
+    if (Math.abs(incoming - timeStartIdx) > 1) setTimeStartIdx(incoming);
   }, [filters.timeStart]);
 
-  const timeEndIdx = useMemo(() => {
-    if (!filters.timeEnd) return TIME_DUAL_STEPS.length - 1; // "Now"
-    const elapsed = Date.now() - new Date(filters.timeEnd).getTime();
-    for (let i = 1; i < TIME_DUAL_STEPS.length - 1; i++) {
-      if (Math.abs(elapsed - TIME_DUAL_STEPS[i].offset) < 300_000) return i;
-    }
-    return TIME_DUAL_STEPS.length - 1;
+  useEffect(() => {
+    const incoming = timeOffsetToIdx(filters.timeEnd, timeMaxIdx);
+    if (Math.abs(incoming - timeEndIdx) > 1) setTimeEndIdx(incoming);
   }, [filters.timeEnd]);
 
-  const timeMaxIdx = TIME_DUAL_STEPS.length - 1;
   const timeMinPct = (timeStartIdx / timeMaxIdx) * 100;
   const timeMaxPct = (timeEndIdx / timeMaxIdx) * 100;
 
-  const timeDisplayLabel = timeStartIdx === 0 && timeEndIdx === TIME_DUAL_STEPS.length - 1
+  const timeDisplayLabel = timeStartIdx === 0 && timeEndIdx === timeMaxIdx
     ? 'All'
     : `${TIME_DUAL_STEPS[timeStartIdx].label} — ${TIME_DUAL_STEPS[timeEndIdx].label}`;
 
-  /* ---- Activity dual slider ---- */
+  /* ---- Activity dual slider (local state) ---- */
   const activityCeiling = Math.min(maxActivity, ACTIVITY_SLIDER_CAP);
-  const effectiveActivityMax = filters.activityMax === Infinity ? activityCeiling : Math.min(filters.activityMax, activityCeiling);
   const sliderRange = Math.max(activityCeiling - 1, 1);
-  const minPct = ((filters.activityMin - 1) / sliderRange) * 100;
-  const maxPct = ((effectiveActivityMax - 1) / sliderRange) * 100;
+
+  const [localActMin, setLocalActMin] = useState(filters.activityMin);
+  const [localActMax, setLocalActMax] = useState(() =>
+    filters.activityMax === Infinity ? activityCeiling : Math.min(filters.activityMax, activityCeiling),
+  );
+
+  // Sync from parent on external changes (preset load, reset)
+  useEffect(() => {
+    setLocalActMin(filters.activityMin);
+  }, [filters.activityMin]);
+
+  useEffect(() => {
+    setLocalActMax(filters.activityMax === Infinity ? activityCeiling : Math.min(filters.activityMax, activityCeiling));
+  }, [filters.activityMax, activityCeiling]);
+
+  const minPct = ((localActMin - 1) / sliderRange) * 100;
+  const maxPct = ((localActMax - 1) / sliderRange) * 100;
 
   const activityDisplay = (() => {
-    const min = filters.activityMin;
-    if (filters.activityMax === Infinity || filters.activityMax >= activityCeiling) {
-      return min === 1 ? 'All' : `\u2265 ${min}`;
+    if (localActMax >= activityCeiling) {
+      return localActMin === 1 ? 'All' : `\u2265 ${localActMin}`;
     }
-    return `${min} – ${filters.activityMax}`;
+    return `${localActMin} – ${localActMax}`;
   })();
 
   /* ---- Event counts ---- */
@@ -472,11 +494,12 @@ export default function GraphFilterPanel({
             type="range"
             className="gf-slider-dual"
             min={0}
-            max={TIME_DUAL_STEPS.length - 1}
+            max={timeMaxIdx}
             step={1}
             value={timeStartIdx}
             onChange={(e) => {
               const idx = Math.min(Number(e.target.value), timeEndIdx);
+              setTimeStartIdx(idx);
               const step = TIME_DUAL_STEPS[idx];
               updateFilter('timeStart', step.offset === Infinity ? '' : new Date(Date.now() - step.offset).toISOString());
             }}
@@ -485,11 +508,12 @@ export default function GraphFilterPanel({
             type="range"
             className="gf-slider-dual"
             min={0}
-            max={TIME_DUAL_STEPS.length - 1}
+            max={timeMaxIdx}
             step={1}
             value={timeEndIdx}
             onChange={(e) => {
               const idx = Math.max(Number(e.target.value), timeStartIdx);
+              setTimeEndIdx(idx);
               const step = TIME_DUAL_STEPS[idx];
               updateFilter('timeEnd', step.offset === 0 ? '' : new Date(Date.now() - step.offset).toISOString());
             }}
@@ -527,9 +551,10 @@ export default function GraphFilterPanel({
                 min={1}
                 max={activityCeiling}
                 step={1}
-                value={filters.activityMin}
+                value={localActMin}
                 onChange={(e) => {
-                  const val = Math.min(Number(e.target.value), effectiveActivityMax);
+                  const val = Math.min(Number(e.target.value), localActMax);
+                  setLocalActMin(val);
                   updateFilter('activityMin', val);
                 }}
               />
@@ -539,9 +564,10 @@ export default function GraphFilterPanel({
                 min={1}
                 max={activityCeiling}
                 step={1}
-                value={effectiveActivityMax}
+                value={localActMax}
                 onChange={(e) => {
-                  const val = Math.max(Number(e.target.value), filters.activityMin);
+                  const val = Math.max(Number(e.target.value), localActMin);
+                  setLocalActMax(val);
                   updateFilter('activityMax', val >= activityCeiling ? Infinity : val);
                 }}
               />
