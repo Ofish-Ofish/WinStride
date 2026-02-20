@@ -30,6 +30,8 @@ namespace WinStride_Api.Controllers
                 return BadRequest("Invalid heartbeat data.");
             }
 
+            incoming.LastSeen = DateTime.SpecifyKind(incoming.LastSeen, DateTimeKind.Utc);
+
             Heartbeat? existing = await _context.Heartbeats
                 .FirstOrDefaultAsync(h => h.MachineName == incoming.MachineName);
 

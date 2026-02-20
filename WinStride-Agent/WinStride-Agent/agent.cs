@@ -18,7 +18,6 @@ class Agent
     static async Task Main()
     {
         AppConfig fullConfig = LoadConfig("config.yaml");
-
         if (string.IsNullOrWhiteSpace(fullConfig.Global.BaseUrl))
         {
             Console.ForegroundColor = ConsoleColor.Red;
@@ -30,6 +29,8 @@ class Agent
 
         string BaseUrl = fullConfig.Global.BaseUrl;
         int batchSize = fullConfig.Global.BatchSize;
+
+        _ = StartHeartbeatLoop(BaseUrl, fullConfig.Global.HeartbeatInterval);
 
         List<Task> monitorTasks = new List<Task>();
 
@@ -85,6 +86,46 @@ class Agent
         {
             Console.WriteLine($"[Error] Failed to parse YAML: {ex.Message}");
             return new AppConfig();
+        }
+    }
+
+    private static async Task StartHeartbeatLoop(string baseUrl, int intervalSeconds)
+    {
+        string heartbeatUrl = baseUrl.Replace("/Event", "/Heartbeat");
+
+        while (true)
+        {
+            try
+            {
+                Heartbeat pulse = new Heartbeat
+                {
+                    MachineName = Environment.MachineName,
+                    LastSeen = DateTime.UtcNow,
+                    IsAlive = true
+                };
+
+                var settings = new JsonSerializerSettings
+                {
+                    ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver()
+                };
+
+                string json = JsonConvert.SerializeObject(pulse, settings);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                HttpResponseMessage response = await client.PostAsync(heartbeatUrl, content);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    string error = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[Heartbeat] Warning: {response.StatusCode} - {error}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Heartbeat] Network failure: {ex.Message}");
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(intervalSeconds));
         }
     }
 }
@@ -411,10 +452,19 @@ public class GlobalSettings
 {
     public string? BaseUrl { get; set; } = null;
     public int BatchSize { get; set; } = 100;
+
+    public int HeartbeatInterval { get; set; } = 60;
 }
 
 public class ODataResponse<T>
 {
     [System.Text.Json.Serialization.JsonPropertyName("value")]
     public List<T>? Value { get; set; }
+}
+public class Heartbeat
+{
+    public int Id { get; set; }
+    public string MachineName { get; set; } = string.Empty;
+    public bool IsAlive { get; set; }
+    public DateTime LastSeen { get; set; }
 }
