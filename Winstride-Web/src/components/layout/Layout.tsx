@@ -3,11 +3,11 @@ import { Outlet, useLocation } from 'react-router-dom';
 import TopBar from './TopBar';
 import Sidebar from './Sidebar';
 
-export type ViewMode = 'list' | 'graph';
+export type ViewMode = 'list' | 'graph' | 'dashboard';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
   const location = useLocation();
   const currentModule = location.pathname.slice(1) || 'security';
 

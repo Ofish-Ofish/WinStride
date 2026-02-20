@@ -23,11 +23,21 @@ export default function TopBar({ onToggleSidebar, currentModule, viewMode, onVie
 
       <div className="ml-auto flex bg-gray-800 rounded-lg p-0.5 border border-gray-700">
         <button
+          onClick={() => onViewModeChange('dashboard')}
+          className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+            viewMode === 'dashboard'
+              ? 'bg-gray-600 text-white'
+              : 'text-gray-300 hover:text-white'
+          }`}
+        >
+          Dashboard
+        </button>
+        <button
           onClick={() => onViewModeChange('list')}
           className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
             viewMode === 'list'
               ? 'bg-gray-600 text-white'
-              : 'text-gray-400 hover:text-gray-200'
+              : 'text-gray-300 hover:text-white'
           }`}
         >
           List View
@@ -37,7 +47,7 @@ export default function TopBar({ onToggleSidebar, currentModule, viewMode, onVie
           className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
             viewMode === 'graph'
               ? 'bg-gray-600 text-white'
-              : 'text-gray-400 hover:text-gray-200'
+              : 'text-gray-300 hover:text-white'
           }`}
         >
           Graph View
