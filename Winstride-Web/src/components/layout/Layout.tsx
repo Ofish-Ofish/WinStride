@@ -3,7 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import TopBar from './TopBar';
 import Sidebar from './Sidebar';
 
-export type ViewMode = 'list' | 'graph' | 'dashboard';
+export type ViewMode = 'list' | 'graph' | 'dashboard' | 'timeline';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);

@@ -52,6 +52,16 @@ export default function TopBar({ onToggleSidebar, currentModule, viewMode, onVie
         >
           Graph View
         </button>
+        <button
+          onClick={() => onViewModeChange('timeline')}
+          className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+            viewMode === 'timeline'
+              ? 'bg-gray-600 text-white'
+              : 'text-gray-300 hover:text-white'
+          }`}
+        >
+          Timeline
+        </button>
       </div>
     </header>
   );

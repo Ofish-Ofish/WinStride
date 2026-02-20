@@ -2,6 +2,7 @@ import { useOutletContext } from 'react-router-dom';
 import LogonGraph from './graph/LogonGraph';
 import EventList from './list/EventList';
 import SecurityMetrics from './dashboard/SecurityMetrics';
+import TimelineView from './timeline/TimelineView';
 import type { ViewMode } from '../../components/layout/Layout';
 
 export default function SecurityDashboard() {
@@ -18,6 +19,9 @@ export default function SecurityDashboard() {
       </div>
       <div className={viewMode === 'graph' ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
         <LogonGraph visible={viewMode === 'graph'} />
+      </div>
+      <div className={viewMode === 'timeline' ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
+        <TimelineView />
       </div>
     </div>
   );
