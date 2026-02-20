@@ -10,6 +10,7 @@ namespace WinStrideApi.Data
         {
         }
         public DbSet<WinEvent> WinEvents { get; set; }
+        public DbSet<Heartbeat> Heartbeats { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
