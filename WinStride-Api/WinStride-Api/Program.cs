@@ -3,6 +3,7 @@ using WinStrideApi.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.OData;
 using Microsoft.OData.ModelBuilder;
+using Microsoft.OData.Edm;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,7 +13,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 var modelBuilder = new ODataConventionModelBuilder();
 modelBuilder.EnableLowerCamelCase();
+
 modelBuilder.EntitySet<WinEvent>("Event");
+modelBuilder.EntitySet<Heartbeat>("Heartbeat");
 
 builder.Services.AddControllers().AddOData(options =>
     options.Select().Filter().OrderBy().Count().SetMaxTop(5000).AddRouteComponents(
@@ -25,19 +28,31 @@ builder.Services.AddSwaggerGen(c =>
     c.ResolveConflictingActions(apiDescriptions => apiDescriptions.First());
 });
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowReactUI",
+        policy =>
+        {
+            policy.WithOrigins("http://localhost:5173")
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        });
+});
+
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
+app.UseCors("AllowReactUI");
+
 app.UseHttpsRedirection();
 
 app.UseAuthorization();
 
-app.MapControllers();   
+app.MapControllers();
 
 app.Run();
