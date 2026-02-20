@@ -8,6 +8,7 @@ import GraphFilterPanel from './GraphFilterPanel';
 import { DEFAULT_FILTERS, resolveTriState, type GraphFilters } from '../shared/filterTypes';
 import { ALL_EVENT_IDS } from '../shared/eventMeta';
 import { loadFiltersFromStorage, saveFiltersToStorage } from '../shared/filterSerializer';
+import { buildODataFilter } from '../shared/buildODataFilter';
 import type { WinEvent } from '../shared/types';
 
 function Legend() {
@@ -48,30 +49,6 @@ function ToolbarButton({ onClick, active, children }: { onClick: () => void; act
       {children}
     </button>
   );
-}
-
-function buildODataFilter(filters: GraphFilters): string {
-  const parts: string[] = ["logName eq 'Security'"];
-
-  const effectiveEventIds = resolveTriState(ALL_EVENT_IDS, filters.eventFilters);
-  if (effectiveEventIds.length > 0) {
-    const orClauses = effectiveEventIds.map((id) => `eventId eq ${id}`).join(' or ');
-    parts.push(`(${orClauses})`);
-  } else {
-    // All events excluded — return nothing from server
-    parts.push('eventId eq -1');
-  }
-
-  if (filters.timeStart) {
-    const iso = new Date(filters.timeStart).toISOString().replace('Z', '+00:00');
-    parts.push(`timeCreated gt ${iso}`);
-  }
-  if (filters.timeEnd) {
-    const iso = new Date(filters.timeEnd).toISOString().replace('Z', '+00:00');
-    parts.push(`timeCreated lt ${iso}`);
-  }
-
-  return parts.join(' and ');
 }
 
 export default function LogonGraph({ visible }: { visible: boolean }) {
@@ -217,7 +194,7 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
   const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges, visible);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Toolbar */}
       <div className="flex items-center justify-between flex-shrink-0 mb-2">
         <Legend />

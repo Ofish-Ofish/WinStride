@@ -21,7 +21,7 @@ export default function Layout() {
       />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar open={sidebarOpen} />
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 flex flex-col overflow-hidden p-6">
           <Outlet context={{ viewMode }} />
         </main>
       </div>
