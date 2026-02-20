@@ -37,12 +37,20 @@ export function useTimelineData(
   return useMemo(() => {
     const globalBuckets = bucketEvents(logons, startMs, endMs);
     const grouped = groupByEntity(logons, mode);
+    const entityCount = grouped.size;
+
+    // Compute per-bucket average across all entities (baseline for pre-training)
+    const baseline = entityCount > 0
+      ? globalBuckets.map(b =>
+          (b.success + b.failed + b.logoff + b.other) / entityCount,
+        )
+      : undefined;
 
     const entities: EntityTimeline[] = [];
     for (const [name, entityLogons] of grouped) {
       const buckets = bucketEvents(entityLogons, startMs, endMs);
       const totalCounts = buckets.map(b => b.success + b.failed + b.logoff + b.other);
-      const anomalyScores = detectAnomalies(totalCounts);
+      const anomalyScores = detectAnomalies(totalCounts, baseline);
 
       entities.push({
         name,

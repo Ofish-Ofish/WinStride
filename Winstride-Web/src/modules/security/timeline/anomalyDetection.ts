@@ -15,7 +15,7 @@ const EPSILON = 1e-7;
 const LOG_2PI = Math.log(2 * Math.PI);
 
 /** Score at or above this value is considered anomalous. */
-export const ANOMALY_THRESHOLD = 5.0;
+export const ANOMALY_THRESHOLD = 3.0;
 
 /**
  * Levinson-Durbin recursion for solving Yule-Walker equations.
@@ -202,23 +202,36 @@ class ChangeFinderModel {
  * underlying distribution (e.g. a spike in logon failures that deviates from
  * the entity's normal pattern).
  *
- * @param values Time-series of numeric observations (e.g. event counts per bucket).
- * @param r      Discount rate (0-1). Lower = longer memory. Default 0.01.
- * @param order  AR model order. Default 1.
- * @param smooth Smoothing window size. Default 7.
- * @returns      Array of change-point scores, same length as `values`.
+ * When `baseline` is provided, the model is pre-trained on those values first
+ * (scores discarded) before scoring `values`. This matches LogonTracer's
+ * approach of training on the cross-user average before scoring each entity.
+ *
+ * @param values   Time-series of numeric observations (e.g. event counts per bucket).
+ * @param baseline Optional pre-training series (e.g. average counts across all entities).
+ * @param r        Discount rate (0-1). Lower = longer memory. Default 0.04.
+ * @param order    AR model order. Default 1.
+ * @param smooth   Smoothing window size. Default 5.
+ * @returns        Array of change-point scores, same length as `values`.
  */
 export function detectAnomalies(
   values: number[],
-  r = 0.01,
+  baseline?: number[],
+  r = 0.04,
   order = 1,
-  smooth = 7,
+  smooth = 5,
 ): number[] {
   if (values.length === 0) return [];
 
   const cf = new ChangeFinderModel(r, order, smooth);
-  const scores: number[] = [];
 
+  // Pre-train on baseline to establish "normal" behaviour
+  if (baseline) {
+    for (const v of baseline) {
+      cf.update(v);
+    }
+  }
+
+  const scores: number[] = [];
   for (const v of values) {
     const [score] = cf.update(v);
     scores.push(score);
