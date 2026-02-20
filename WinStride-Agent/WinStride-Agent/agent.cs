@@ -157,24 +157,33 @@ public class LogMonitor
 
         try
         {
-            string json = System.Text.Json.JsonSerializer.Serialize(data);
-            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var settings = new JsonSerializerSettings
+            {
+                ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver(),
+                DateFormatString = "yyyy-MM-ddTHH:mm:ss.fffZ",
+                ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+            };
 
-            HttpResponseMessage response = await _client.PostAsync(_baseUrl, content);
+            string json = JsonConvert.SerializeObject(data, settings);
+
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            HttpResponseMessage response = await _client.PostAsync($"{_baseUrl}/batch", content);
 
             if (response.IsSuccessStatusCode)
             {
+                Console.WriteLine($"[{_logName}] Uploaded {data.Count} logs.");
                 return true;
             }
-            else
-            {
-                Console.WriteLine($"[{_logName}] Batch upload failed. Status: {response.StatusCode}");
-                return false;
-            }
+
+            string errorBody = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"[{_logName}] Error: {response.StatusCode} - {errorBody}");
+
+            return false;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[{_logName}] Network error during batch upload: {ex.Message}");
+            Console.WriteLine($"[{_logName}] Network failure: {ex.Message}");
             return false;
         }
     }
@@ -228,7 +237,7 @@ public class LogMonitor
         await StartAsync();
     }
 
-    private string BuildXPathQuery(DateTime? since = null)
+    private string BuildXPathQuery(DateTimeOffset? since = null)
     {
         List<string> conditions = new List<string>();
 
@@ -246,7 +255,7 @@ public class LogMonitor
             conditions.Add($"Level <= {levelId}");
         }
 
-        DateTime? effectiveSince = since;
+        DateTimeOffset? effectiveSince = since;
 
         if (_config.MaxBacklogDays.HasValue)
         {
@@ -276,7 +285,7 @@ public class LogMonitor
         return $"*[System[{string.Join(" and ", conditions)}]]";
     }
 
-    private async Task SyncBacklogAsync(DateTime? since)
+    private async Task SyncBacklogAsync(DateTimeOffset? since)
     {
         try
         {
@@ -339,17 +348,21 @@ public class LogMonitor
     {
         try
         {
-            string requestUrl = $"{_baseUrl}?machineName={Uri.EscapeDataString(_machineName)}&logName={Uri.EscapeDataString(_logName)}&take=1";
+            string filter = $"machineName eq '{_machineName}' and logName eq '{_logName}'";
+            string requestUrl = $"{_baseUrl}?$filter={Uri.EscapeDataString(filter)}&$orderby=timeCreated desc&$top=1";
+
             HttpResponseMessage response = await _client.GetAsync(requestUrl);
 
             if (response.IsSuccessStatusCode)
             {
                 string json = await response.Content.ReadAsStringAsync();
-                List<WinEvent>? logs = System.Text.Json.JsonSerializer.Deserialize<List<WinEvent>>(json, new JsonSerializerOptions
+
+                var odataResponse = System.Text.Json.JsonSerializer.Deserialize<ODataResponse<WinEvent>>(json, new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
                 });
-                return logs?.FirstOrDefault();
+
+                return odataResponse?.Value?.FirstOrDefault();
             }
         }
         catch (Exception ex)
@@ -371,7 +384,9 @@ public class LogMonitor
             LogName = record.LogName,
             MachineName = record.MachineName,
             Level = record.LevelDisplayName ?? $"Level {record.Level}",
-            TimeCreated = record.TimeCreated?.ToUniversalTime() ?? DateTime.UtcNow,
+            TimeCreated = record.TimeCreated.HasValue
+                ? new DateTimeOffset(record.TimeCreated.Value.ToUniversalTime())
+                : DateTimeOffset.UtcNow,
             EventData = jsonFromXml
         };
     }
@@ -396,4 +411,10 @@ public class GlobalSettings
 {
     public string? BaseUrl { get; set; } = null;
     public int BatchSize { get; set; } = 100;
+}
+
+public class ODataResponse<T>
+{
+    [System.Text.Json.Serialization.JsonPropertyName("value")]
+    public List<T>? Value { get; set; }
 }

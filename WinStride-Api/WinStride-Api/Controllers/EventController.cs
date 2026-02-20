@@ -36,8 +36,8 @@ namespace WinStride_Api.Controllers
             return _context.WinEvents.OrderByDescending(e => e.TimeCreated);
         }
 
-        [HttpPost("api/Event")]
-        public async Task<ActionResult> PostWinEvents(List<WinEvent> winEvents)
+        [HttpPost("api/Event/batch")]
+        public async Task<ActionResult> PostWinEvents([FromBody] List<WinEvent> winEvents)
         {
             if (winEvents == null || !winEvents.Any())
             {
