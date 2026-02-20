@@ -29,6 +29,8 @@ export const graphStyles: CyStylesheet[] = [
       'text-outline-color': '#010409',
       'text-outline-width': 3,
       'text-outline-opacity': 1,
+      'text-max-width': '120px',
+      'text-wrap': 'ellipsis',
       'min-zoomed-font-size': 0,
       'overlay-opacity': 0,
       'border-width': 1,

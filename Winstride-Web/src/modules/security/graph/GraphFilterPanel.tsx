@@ -202,9 +202,9 @@ function TriStateCheckbox({
           </svg>
         )}
       </div>
-      <span className={`text-[13px] leading-tight ${
+      <span className={`text-[13px] leading-tight min-w-0 truncate ${
         state === 'exclude' ? 'text-gray-500 line-through' : 'text-gray-300'
-      }`}>
+      }`} title={sub ? `${label} — ${sub}` : label}>
         {label}
         {sub && <span className={`ml-1.5 ${state === 'exclude' ? 'text-gray-600' : 'text-gray-500'}`}>— {sub}</span>}
       </span>

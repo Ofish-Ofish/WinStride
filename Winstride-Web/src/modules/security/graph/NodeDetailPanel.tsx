@@ -22,7 +22,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between items-baseline py-1.5 border-b border-[#21262d]">
       <span className="text-[11px] text-gray-500 uppercase tracking-wider shrink-0">{label}</span>
-      <span className="text-[12px] text-gray-300 font-mono text-right max-w-[60%] break-all whitespace-nowrap">
+      <span className="text-[12px] text-gray-300 font-mono text-right max-w-[60%] break-all">
         {value}
       </span>
     </div>
@@ -164,7 +164,7 @@ function EdgePanel({ data }: { data: Record<string, unknown> }) {
       <div className={`h-0.5 ${isFailedLogon ? 'bg-[#f85149]' : 'bg-[#e3b341]'}`} />
       <div className="p-3.5">
         <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-[13px] font-semibold text-gray-100">{logonTypeLabel}</h3>
+          <h3 className="text-[13px] font-semibold text-gray-100 truncate">{logonTypeLabel}</h3>
           {elevatedToken && <Badge color="#f97583">ADMIN</Badge>}
         </div>
 
