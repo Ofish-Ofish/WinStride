@@ -1,4 +1,4 @@
-import { resolveTriState } from '../../security/shared/filterTypes';
+import { resolveTriState } from '../../../components/filter/filterPrimitives';
 import { SYSMON_EVENT_IDS } from './eventMeta';
 import type { SysmonFilters } from './filterTypes';
 

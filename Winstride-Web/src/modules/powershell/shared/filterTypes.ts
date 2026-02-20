@@ -1,4 +1,4 @@
-import type { FilterState } from '../../security/shared/filterTypes';
+import type { FilterState } from '../../../components/filter/filterPrimitives';
 
 export type { FilterState };
 

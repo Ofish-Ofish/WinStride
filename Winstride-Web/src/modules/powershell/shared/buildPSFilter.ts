@@ -1,4 +1,4 @@
-import { resolveTriState } from '../../security/shared/filterTypes';
+import { resolveTriState } from '../../../components/filter/filterPrimitives';
 import { PS_EVENT_IDS } from './eventMeta';
 import type { PSFilters } from './filterTypes';
 

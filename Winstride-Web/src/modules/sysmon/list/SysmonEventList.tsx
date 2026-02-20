@@ -9,7 +9,7 @@ import { parseProcessCreate, parseNetworkConnect, parseFileCreate } from '../sha
 import SysmonFilterPanel from '../SysmonFilterPanel';
 import SysmonDetailRow from './SysmonDetailRow';
 import type { WinEvent } from '../../security/shared/types';
-import { resolveTriState } from '../../security/shared/filterTypes';
+import { resolveTriState } from '../../../components/filter/filterPrimitives';
 import {
   COLUMNS,
   buildGridTemplate,

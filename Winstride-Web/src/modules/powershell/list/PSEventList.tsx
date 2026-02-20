@@ -9,7 +9,7 @@ import { parseScriptBlock, parseCommandExecution, findSuspiciousKeywords } from 
 import PSFilterPanel from '../PSFilterPanel';
 import PSDetailRow from './PSDetailRow';
 import type { WinEvent } from '../../security/shared/types';
-import { resolveTriState } from '../../security/shared/filterTypes';
+import { resolveTriState } from '../../../components/filter/filterPrimitives';
 import {
   COLUMNS,
   buildGridTemplate,

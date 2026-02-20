@@ -11,7 +11,7 @@ import SysmonFilterPanel from '../SysmonFilterPanel';
 import { buildProcessTree, type ProcessNode } from './transformSysmon';
 import { processTreeStyles, processTreeLayout } from './processTreeStyles';
 import type { WinEvent } from '../../security/shared/types';
-import { resolveTriState } from '../../security/shared/filterTypes';
+import { resolveTriState } from '../../../components/filter/filterPrimitives';
 
 /* ------------------------------------------------------------------ */
 /*  Legend                                                              */
