@@ -1,7 +1,7 @@
 import { useRef, useMemo, useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import cytoscape, { type Core, type EventObject } from 'cytoscape';
 import { fetchEvents } from '../../../api/client';
+import { useCytoscape } from '../../../shared/graph';
 import { DEFAULT_SYSMON_FILTERS, type SysmonFilters } from '../shared/filterTypes';
 import { loadSysmonFilters, saveSysmonFilters } from '../shared/filterSerializer';
 import { buildSysmonFilter } from '../shared/buildSysmonFilter';
@@ -88,14 +88,10 @@ function NodeDetail({ node }: { node: ProcessNode }) {
 
 export default function ProcessTree({ visible }: { visible: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const cyRef = useRef<Core | null>(null);
   const [showFilters, setShowFilters] = useState(true);
   const [filters, setFilters] = useState<SysmonFilters>(() => loadSysmonFilters() ?? DEFAULT_SYSMON_FILTERS);
   const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
-  const [selectedNode, setSelectedNode] = useState<ProcessNode | null>(null);
-  const selectedRef = useRef<ProcessNode | null>(null);
 
-  useEffect(() => { selectedRef.current = selectedNode; }, [selectedNode]);
   useEffect(() => { saveSysmonFilters(filters); }, [filters]);
 
   /* ---- Resize handle ---- */
@@ -219,147 +215,17 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     return buildProcessTree(events);
   }, [rawEvents, filters, availableProcesses, availableUsers]);
 
-  /* ---- Initialize Cytoscape ---- */
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const cy = cytoscape({
-      container: containerRef.current,
-      style: processTreeStyles,
-      layout: { name: 'grid' },
+  /* ---- Shared Cytoscape hook ---- */
+  const { selected, fitToView, resetLayout } = useCytoscape(
+    containerRef, treeData.nodes, treeData.edges, visible, {
+      styles: processTreeStyles,
+      layout: processTreeLayout,
       minZoom: 0.15,
-      maxZoom: 5,
-      wheelSensitivity: 3,
-    });
+      relayoutOnDataChange: true,
+    },
+  );
 
-    cyRef.current = cy;
-
-    // Click handlers
-    cy.on('tap', 'node', (evt: EventObject) => {
-      const node = evt.target;
-
-      if (selectedRef.current) {
-        if (node.hasClass('highlighted')) {
-          cy.elements().removeClass('highlighted dimmed');
-          const neighborhood = node.neighborhood().add(node);
-          neighborhood.addClass('highlighted');
-          cy.elements().not(neighborhood).addClass('dimmed');
-          setSelectedNode(node.data() as ProcessNode);
-        } else {
-          cy.elements().removeClass('highlighted dimmed');
-          setSelectedNode(null);
-        }
-        return;
-      }
-
-      const neighborhood = node.neighborhood().add(node);
-      neighborhood.addClass('highlighted');
-      cy.elements().not(neighborhood).addClass('dimmed');
-      setSelectedNode(node.data() as ProcessNode);
-    });
-
-    cy.on('tap', (evt: EventObject) => {
-      if (evt.target !== cy) return;
-      cy.elements().removeClass('highlighted dimmed');
-      setSelectedNode(null);
-    });
-
-    return () => {
-      cy.destroy();
-      cyRef.current = null;
-    };
-  }, [containerRef]);
-
-  /* ---- Update elements ---- */
-  const hasLaidOut = useRef(false);
-
-  useEffect(() => {
-    const cy = cyRef.current;
-    if (!cy) return;
-
-    const { nodes, edges } = treeData;
-
-    if (nodes.length === 0) {
-      cy.elements().remove();
-      hasLaidOut.current = false;
-      return;
-    }
-
-    const newNodeIds = new Set(nodes.map((n) => n.id));
-    const newEdgeIds = new Set(edges.map((e) => e.id));
-
-    cy.batch(() => {
-      cy.nodes().forEach((n) => { if (!newNodeIds.has(n.id())) n.remove(); });
-      cy.edges().forEach((e) => { if (!newEdgeIds.has(e.id())) e.remove(); });
-
-      for (const node of nodes) {
-        const existing = cy.getElementById(node.id);
-        const data = {
-          label: node.label,
-          type: node.type,
-          integrityLevel: node.integrityLevel,
-          fullPath: node.fullPath,
-          commandLine: node.commandLine,
-          user: node.user,
-          hashes: node.hashes,
-          destinationIp: node.destinationIp,
-          destinationPort: node.destinationPort,
-          protocol: node.protocol,
-          targetFilename: node.targetFilename,
-          parentId: node.parentId,
-        };
-        if (existing.length > 0) {
-          existing.data(data);
-        } else {
-          cy.add({ group: 'nodes', data: { id: node.id, ...data }, position: { x: 0, y: 0 } });
-        }
-      }
-
-      for (const edge of edges) {
-        const existing = cy.getElementById(edge.id);
-        if (existing.length === 0) {
-          cy.add({
-            group: 'edges',
-            data: { id: edge.id, source: edge.source, target: edge.target, type: edge.type },
-          });
-        }
-      }
-    });
-
-    // Layout
-    if (!hasLaidOut.current || true) {
-      const layout = cy.layout(processTreeLayout);
-      layout.on('layoutstop', () => {
-        cy.fit(undefined, processTreeLayout.padding);
-      });
-      layout.run();
-      hasLaidOut.current = true;
-    }
-  }, [treeData]);
-
-  /* ---- Resize on visibility change ---- */
-  useEffect(() => {
-    const cy = cyRef.current;
-    if (!cy || !visible) return;
-    cy.resize();
-    cy.fit(undefined, processTreeLayout.padding);
-  }, [visible]);
-
-  const fitToView = useCallback(() => {
-    cyRef.current?.fit(undefined, processTreeLayout.padding);
-  }, []);
-
-  const resetLayout = useCallback(() => {
-    const cy = cyRef.current;
-    if (!cy) return;
-    cy.elements().removeClass('highlighted dimmed');
-    setSelectedNode(null);
-    const layout = cy.layout(processTreeLayout);
-    layout.on('layoutstop', () => {
-      cy.fit(undefined, processTreeLayout.padding);
-    });
-    layout.run();
-  }, []);
+  const selectedNode = selected ? selected.data as unknown as ProcessNode : null;
 
   return (
     <div className="flex flex-col flex-1 min-h-0">

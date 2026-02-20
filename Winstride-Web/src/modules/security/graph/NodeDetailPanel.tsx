@@ -1,4 +1,4 @@
-import type { SelectedElement } from './useCytoscape';
+import type { SelectedElement } from '../../../shared/graph';
 import { FAILURE_STATUS_LABELS } from '../shared/eventMeta';
 
 const TYPE_COLORS: Record<string, string> = {

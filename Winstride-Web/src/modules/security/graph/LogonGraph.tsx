@@ -2,15 +2,105 @@ import { useRef, useMemo, useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchEvents } from '../../../api/client';
 import { transformEvents, isSystemAccount, LOGON_TYPE_LABELS } from './transformEvents';
-import { useCytoscape } from './useCytoscape';
+import { useCytoscape } from '../../../shared/graph';
+import { graphStyles } from './graphStyles';
+import { coseLayout } from './graphLayout';
+import type { Core } from 'cytoscape';
+import type { GraphNode, GraphEdge } from '../shared/types';
 import NodeDetailPanel from './NodeDetailPanel';
 import GraphFilterPanel from './GraphFilterPanel';
 import { DEFAULT_FILTERS, resolveTriState, type GraphFilters } from '../shared/filterTypes';
-import { ALL_EVENT_IDS } from '../shared/eventMeta';
 import { loadFiltersFromStorage, saveFiltersToStorage } from '../shared/filterSerializer';
 import { buildODataFilter } from '../shared/buildODataFilter';
 import type { WinEvent } from '../shared/types';
 import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
+
+/* ── Security-specific layout helpers ────────────────────────────── */
+
+function computeHubSpokePositions(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+): Map<string, { x: number; y: number }> {
+  const positions = new Map<string, { x: number; y: number }>();
+  const machines = nodes.filter((n) => n.type === 'machine');
+  const users = nodes.filter((n) => n.type !== 'machine');
+
+  const machineToUsers = new Map<string, string[]>();
+  const userToMachines = new Map<string, string[]>();
+  for (const m of machines) machineToUsers.set(m.id, []);
+  for (const u of users) userToMachines.set(u.id, []);
+
+  for (const edge of edges) {
+    const src = edge.source, tgt = edge.target;
+    if (machineToUsers.has(tgt) && userToMachines.has(src)) {
+      if (!machineToUsers.get(tgt)!.includes(src)) machineToUsers.get(tgt)!.push(src);
+      if (!userToMachines.get(src)!.includes(tgt)) userToMachines.get(src)!.push(tgt);
+    }
+    if (machineToUsers.has(src) && userToMachines.has(tgt)) {
+      if (!machineToUsers.get(src)!.includes(tgt)) machineToUsers.get(src)!.push(tgt);
+      if (!userToMachines.get(tgt)!.includes(src)) userToMachines.get(tgt)!.push(src);
+    }
+  }
+
+  const machineSpacing = 350;
+  if (machines.length === 1) {
+    positions.set(machines[0].id, { x: 0, y: 0 });
+  } else {
+    const radius = (machines.length * machineSpacing) / (2 * Math.PI);
+    machines.forEach((m, i) => {
+      const angle = (2 * Math.PI * i) / machines.length - Math.PI / 2;
+      positions.set(m.id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+    });
+  }
+
+  const spokeRadius = 250;
+  const userPositionSums = new Map<string, { x: number; y: number; count: number }>();
+  for (const [machineId, connectedUsers] of machineToUsers) {
+    const machinePos = positions.get(machineId)!;
+    if (connectedUsers.length === 0) continue;
+    connectedUsers.forEach((userId, i) => {
+      const angle = (2 * Math.PI * i) / connectedUsers.length - Math.PI / 2;
+      const ux = machinePos.x + Math.cos(angle) * spokeRadius;
+      const uy = machinePos.y + Math.sin(angle) * spokeRadius;
+      const existing = userPositionSums.get(userId);
+      if (existing) { existing.x += ux; existing.y += uy; existing.count++; }
+      else userPositionSums.set(userId, { x: ux, y: uy, count: 1 });
+    });
+  }
+  for (const [userId, sum] of userPositionSums) {
+    positions.set(userId, { x: sum.x / sum.count, y: sum.y / sum.count });
+  }
+
+  let orphanX = 0;
+  for (const n of nodes) {
+    if (!positions.has(n.id)) { positions.set(n.id, { x: orphanX, y: 600 }); orphanX += 120; }
+  }
+  return positions;
+}
+
+function doubleDistancesFromCenter(cy: Core) {
+  const center = { x: 0, y: 0 };
+  const allNodes = cy.nodes();
+  allNodes.forEach((n) => { center.x += n.position('x'); center.y += n.position('y'); });
+  center.x /= allNodes.length;
+  center.y /= allNodes.length;
+  allNodes.forEach((n) => {
+    n.position({
+      x: center.x + (n.position('x') - center.x) * 2,
+      y: center.y + (n.position('y') - center.y) * 2,
+    });
+  });
+}
+
+function preLayoutHubSpoke(cy: Core) {
+  const currentNodes: GraphNode[] = cy.nodes().map((n) => n.data() as GraphNode);
+  const currentEdges: GraphEdge[] = cy.edges().map((e) => e.data() as GraphEdge);
+  const positions = computeHubSpokePositions(currentNodes, currentEdges);
+  cy.nodes().forEach((node) => {
+    const pos = positions.get(node.id());
+    if (pos) node.position(pos);
+  });
+}
 
 function Legend() {
   return (
@@ -237,7 +327,12 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     return { nodes, edges };
   }, [fullGraph, filters, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
 
-  const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges, visible);
+  const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges, visible, {
+    styles: graphStyles,
+    layout: coseLayout,
+    preLayout: preLayoutHubSpoke,
+    postLayout: doubleDistancesFromCenter,
+  });
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
