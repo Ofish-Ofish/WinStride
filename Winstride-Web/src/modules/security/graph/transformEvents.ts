@@ -1,4 +1,9 @@
-import type { WinEvent, LogonInfo, GraphNode, GraphEdge } from '../types';
+import type { WinEvent, LogonInfo, GraphNode, GraphEdge } from '../shared/types';
+import { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount } from '../shared/eventMeta';
+
+// Re-export shared symbols so existing consumers don't all break at once
+export { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount };
+export { FAILURE_STATUS_LABELS } from '../shared/eventMeta';
 
 const PRIVILEGED_USERS = new Set([
   'Administrator',
@@ -6,48 +11,6 @@ const PRIVILEGED_USERS = new Set([
   'admin',
   'ADMIN',
 ]);
-
-// Human-readable event descriptions
-const EVENT_LABELS: Record<number, string> = {
-  4624: 'Logon',
-  4625: 'Failed Logon',
-  4634: 'Logoff',
-  4647: 'User Logoff',
-  4648: 'Run As Other User',
-  4662: 'Object Access',
-  4672: 'Admin Logon',
-  4720: 'Account Created',
-  4722: 'Account Enabled',
-  4723: 'Password Change',
-  4724: 'Password Reset',
-  4725: 'Account Disabled',
-  4726: 'Account Deleted',
-  4728: 'Added to Group',
-  4732: 'Added to Local Group',
-  4733: 'Removed from Group',
-  4738: 'Account Changed',
-  4740: 'Account Locked Out',
-  4756: 'Added to Universal Group',
-  4767: 'Account Unlocked',
-  4768: 'Kerberos TGT',
-  4769: 'Kerberos Service Ticket',
-  4776: 'NTLM Auth',
-  4798: 'Group Lookup',
-  4799: 'Local Group Lookup',
-  5379: 'Credential Read',
-};
-
-const LOGON_TYPE_LABELS: Record<number, string> = {
-  2: 'Interactive',
-  3: 'Network',
-  4: 'Batch',
-  5: 'Service',
-  7: 'Unlock',
-  8: 'NetCleartext',
-  9: 'NewCreds',
-  10: 'RDP',
-  11: 'Cached',
-};
 
 function getDataField(dataArray: unknown[], fieldName: string): string {
   if (!Array.isArray(dataArray)) return '';
@@ -92,6 +55,8 @@ function extractLogonInfo(event: WinEvent): LogonInfo | null {
     const targetUserName = getDataField(dataArray, 'TargetUserName');
     const logonTypeStr = getDataField(dataArray, 'LogonType');
     const logonType = logonTypeStr ? parseInt(logonTypeStr, 10) : -1;
+    const keyLengthStr = getDataField(dataArray, 'KeyLength');
+    const elevatedStr = getDataField(dataArray, 'ElevatedToken');
 
     if (!targetUserName) return null;
 
@@ -101,9 +66,19 @@ function extractLogonInfo(event: WinEvent): LogonInfo | null {
       machineName: event.machineName,
       logonType,
       ipAddress: getDataField(dataArray, 'IpAddress') || '-',
+      ipPort: getDataField(dataArray, 'IpPort') || '',
       timeCreated: event.timeCreated,
       eventId: event.eventId,
       subjectUserName: getDataField(dataArray, 'SubjectUserName'),
+      subjectDomainName: getDataField(dataArray, 'SubjectDomainName'),
+      authPackage: getDataField(dataArray, 'AuthenticationPackageName'),
+      logonProcess: getDataField(dataArray, 'LogonProcessName'),
+      workstationName: getDataField(dataArray, 'WorkstationName'),
+      processName: getDataField(dataArray, 'ProcessName'),
+      keyLength: keyLengthStr ? parseInt(keyLengthStr, 10) : -1,
+      elevatedToken: elevatedStr === '%%1842',
+      failureStatus: getDataField(dataArray, 'Status'),
+      failureSubStatus: getDataField(dataArray, 'SubStatus'),
     };
   } catch {
     return null;
@@ -119,33 +94,55 @@ export function transformEvents(events: WinEvent[]): {
   const nodeMap = new Map<string, GraphNode>();
   const edgeMap = new Map<string, GraphEdge>();
 
+  const newNode = (id: string, label: string, type: 'user' | 'machine', privileged: boolean): GraphNode => ({
+    id, label, type, privileged,
+    logonCount: 0, failedCount: 0, successCount: 0, connectedCount: 0,
+    authPackages: [], hadAdminSession: false, lastIp: '', lastSeen: '',
+  });
+
+  // Track unique connections per node
+  const userMachines = new Map<string, Set<string>>();
+  const machineUsers = new Map<string, Set<string>>();
+  const nodeAuthPackages = new Map<string, Set<string>>();
+
   for (const logon of logons) {
     const userId = `user:${logon.targetUserName.toLowerCase()}`;
     const machineId = `machine:${logon.machineName.toLowerCase()}`;
+    const isFailed = logon.eventId === 4625;
 
     // Upsert user node
     if (!nodeMap.has(userId)) {
-      nodeMap.set(userId, {
-        id: userId,
-        label: logon.targetUserName,
-        type: 'user',
-        privileged: PRIVILEGED_USERS.has(logon.targetUserName),
-        logonCount: 0,
-      });
+      nodeMap.set(userId, newNode(userId, logon.targetUserName, 'user', PRIVILEGED_USERS.has(logon.targetUserName)));
+      userMachines.set(userId, new Set());
+      nodeAuthPackages.set(userId, new Set());
     }
-    nodeMap.get(userId)!.logonCount++;
+    const userNode = nodeMap.get(userId)!;
+    userNode.logonCount++;
+    if (isFailed) userNode.failedCount++;
+    else userNode.successCount++;
+    if (logon.elevatedToken) userNode.hadAdminSession = true;
+    userMachines.get(userId)!.add(machineId);
+    if (logon.authPackage) nodeAuthPackages.get(userId)!.add(logon.authPackage);
+    if (logon.ipAddress && logon.ipAddress !== '-' && logon.timeCreated > userNode.lastSeen) {
+      userNode.lastIp = logon.ipAddress;
+      userNode.lastSeen = logon.timeCreated;
+    }
 
     // Upsert machine node
     if (!nodeMap.has(machineId)) {
-      nodeMap.set(machineId, {
-        id: machineId,
-        label: logon.machineName,
-        type: 'machine',
-        privileged: false,
-        logonCount: 0,
-      });
+      nodeMap.set(machineId, newNode(machineId, logon.machineName, 'machine', false));
+      machineUsers.set(machineId, new Set());
+      nodeAuthPackages.set(machineId, new Set());
     }
-    nodeMap.get(machineId)!.logonCount++;
+    const machineNode = nodeMap.get(machineId)!;
+    machineNode.logonCount++;
+    if (isFailed) machineNode.failedCount++;
+    else machineNode.successCount++;
+    machineUsers.get(machineId)!.add(userId);
+    if (logon.authPackage) nodeAuthPackages.get(machineId)!.add(logon.authPackage);
+    if (logon.timeCreated > machineNode.lastSeen) {
+      machineNode.lastSeen = logon.timeCreated;
+    }
 
     // Edge keyed by user + machine + eventId + logonType
     const label = getEdgeLabel(logon.eventId, logon.logonType);
@@ -161,22 +158,44 @@ export function transformEvents(events: WinEvent[]): {
         firstSeen: logon.timeCreated,
         lastSeen: logon.timeCreated,
         ipAddress: logon.ipAddress,
+        ipPort: logon.ipPort,
         subjectUserName: logon.subjectUserName,
+        subjectDomainName: logon.subjectDomainName,
         targetDomainName: logon.targetDomainName,
+        authPackage: logon.authPackage,
+        logonProcess: logon.logonProcess,
+        workstationName: logon.workstationName,
+        processName: logon.processName,
+        keyLength: logon.keyLength,
+        elevatedToken: logon.elevatedToken,
+        failureStatus: logon.failureStatus,
+        failureSubStatus: logon.failureSubStatus,
       });
     }
     const edge = edgeMap.get(edgeKey)!;
     edge.logonCount++;
     if (logon.timeCreated > edge.lastSeen) {
       edge.lastSeen = logon.timeCreated;
+      // Update fields from most recent event
+      if (logon.ipAddress && logon.ipAddress !== '-') edge.ipAddress = logon.ipAddress;
+      if (logon.ipPort) edge.ipPort = logon.ipPort;
+      if (logon.processName) edge.processName = logon.processName;
+      if (logon.workstationName) edge.workstationName = logon.workstationName;
+      if (logon.elevatedToken) edge.elevatedToken = true;
     }
     if (logon.timeCreated < edge.firstSeen) {
       edge.firstSeen = logon.timeCreated;
     }
-    // Keep the most recent non-empty IP
-    if (logon.ipAddress && logon.ipAddress !== '-') {
-      edge.ipAddress = logon.ipAddress;
+  }
+
+  // Finalize node stats
+  for (const [id, node] of nodeMap) {
+    if (node.type === 'user') {
+      node.connectedCount = userMachines.get(id)?.size ?? 0;
+    } else {
+      node.connectedCount = machineUsers.get(id)?.size ?? 0;
     }
+    node.authPackages = Array.from(nodeAuthPackages.get(id) ?? []);
   }
 
   return {

@@ -1,10 +1,15 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useState, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchEvents } from '../../../api/client';
-import { transformEvents } from './transformEvents';
+import { transformEvents, isSystemAccount, LOGON_TYPE_LABELS } from './transformEvents';
 import { useCytoscape } from './useCytoscape';
 import NodeDetailPanel from './NodeDetailPanel';
-import type { WinEvent } from '../types';
+import GraphFilterPanel from './GraphFilterPanel';
+import { DEFAULT_FILTERS, resolveTriState, type GraphFilters } from '../shared/filterTypes';
+import { ALL_EVENT_IDS } from '../shared/eventMeta';
+import { loadFiltersFromStorage, saveFiltersToStorage } from '../shared/filterSerializer';
+import { buildODataFilter } from '../shared/buildODataFilter';
+import type { WinEvent } from '../shared/types';
 
 function Legend() {
   return (
@@ -31,11 +36,15 @@ function Legend() {
   );
 }
 
-function ToolbarButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+function ToolbarButton({ onClick, active, children }: { onClick: () => void; active?: boolean; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className="px-3 py-1 text-[11px] text-gray-400 hover:text-gray-200 bg-[#161b22] hover:bg-[#1c2128] rounded-md border border-[#30363d] transition-all duration-150"
+      className={`px-3 py-1 text-[11px] rounded-md border transition-all duration-150 ${
+        active
+          ? 'text-[#58a6ff] bg-[#58a6ff]/10 border-[#58a6ff]/40'
+          : 'text-gray-400 hover:text-gray-200 bg-[#161b22] hover:bg-[#1c2128] border-[#30363d]'
+      }`}
     >
       {children}
     </button>
@@ -44,24 +53,210 @@ function ToolbarButton({ onClick, children }: { onClick: () => void; children: R
 
 export default function LogonGraph({ visible }: { visible: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [showFilters, setShowFilters] = useState(true);
+  const [filters, setFilters] = useState<GraphFilters>(() => loadFiltersFromStorage() ?? DEFAULT_FILTERS);
+  const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
+
+  // Persist filters to localStorage on every change
+  useEffect(() => { saveFiltersToStorage(filters); }, [filters]);
+
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panelWidth;
+    const onMove = (ev: MouseEvent) => {
+      const delta = startX - ev.clientX; // dragging left = wider panel
+      setPanelWidth(Math.min(1000, Math.max(260, startW + delta)));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [panelWidth]);
+
+  const odataFilter = useMemo(() => buildODataFilter(filters), [filters.eventFilters, filters.timeStart, filters.timeEnd]);
 
   const { data: events, isLoading, error } = useQuery<WinEvent[]>({
-    queryKey: ['events', 'security-graph'],
-    queryFn: () => fetchEvents({ logName: 'Security' }),
+    queryKey: ['events', 'security-graph', odataFilter],
+    queryFn: () => fetchEvents({
+      $filter: odataFilter,
+      $select: 'eventId,machineName,timeCreated,eventData',
+    }),
     refetchInterval: 30000,
   });
 
-  const { nodes, edges } = useMemo(() => {
+  // Step 1: transform raw events into nodes & edges
+  const fullGraph = useMemo(() => {
     if (!events) return { nodes: [], edges: [] };
     return transformEvents(events);
   }, [events]);
 
+  // Extract available machines and users for the filter panel
+  const availableMachines = useMemo(
+    () => fullGraph.nodes.filter((n) => n.type === 'machine').map((n) => n.label).sort(),
+    [fullGraph.nodes],
+  );
+
+  const availableUsers = useMemo(
+    () => fullGraph.nodes.filter((n) => n.type === 'user').map((n) => n.label).sort(),
+    [fullGraph.nodes],
+  );
+
+  // Calculate max activity across all edges for the slider range
+  const maxActivity = useMemo(() => {
+    if (fullGraph.edges.length === 0) return 50;
+    return Math.max(...fullGraph.edges.map((e) => e.logonCount));
+  }, [fullGraph.edges]);
+
+  // Extract available values for new filter sections
+  const availableIps = useMemo(() => {
+    const ips = new Set<string>();
+    for (const e of fullGraph.edges) if (e.ipAddress && e.ipAddress !== '-') ips.add(e.ipAddress);
+    return [...ips].sort();
+  }, [fullGraph.edges]);
+
+  const availableAuthPackages = useMemo(() => {
+    const pkgs = new Set<string>();
+    for (const e of fullGraph.edges) if (e.authPackage) pkgs.add(e.authPackage);
+    return [...pkgs].sort();
+  }, [fullGraph.edges]);
+
+  const availableProcesses = useMemo(() => {
+    const procs = new Set<string>();
+    for (const e of fullGraph.edges) if (e.processName && e.processName !== '-') procs.add(e.processName);
+    return [...procs].sort();
+  }, [fullGraph.edges]);
+
+  const availableFailureStatuses = useMemo(() => {
+    const statuses = new Set<string>();
+    for (const e of fullGraph.edges) {
+      if (e.failureStatus && e.failureStatus !== '0x0') statuses.add(e.failureStatus);
+      if (e.failureSubStatus && e.failureSubStatus !== '0x0') statuses.add(e.failureSubStatus);
+    }
+    return [...statuses].sort();
+  }, [fullGraph.edges]);
+
+  // Step 2: apply client-side filters
+  const { nodes, edges } = useMemo(() => {
+    let { nodes, edges } = fullGraph;
+
+    // Apply machine tri-state filters (select = whitelist, exclude = blacklist)
+    if (filters.machineFilters.size > 0) {
+      const selected = new Set<string>();
+      const excluded = new Set<string>();
+      for (const [name, state] of filters.machineFilters) {
+        if (state === 'select') selected.add(name);
+        else if (state === 'exclude') excluded.add(name);
+      }
+      const prevNodeIds = new Set(nodes.filter((n) => n.type === 'machine').map((n) => n.id));
+      if (selected.size > 0) {
+        nodes = nodes.filter((n) => n.type !== 'machine' || selected.has(n.label));
+      } else if (excluded.size > 0) {
+        nodes = nodes.filter((n) => n.type !== 'machine' || !excluded.has(n.label));
+      }
+      const keptIds = new Set(nodes.filter((n) => n.type === 'machine').map((n) => n.id));
+      const removedIds = new Set([...prevNodeIds].filter((id) => !keptIds.has(id)));
+      if (removedIds.size > 0) {
+        edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
+      }
+    }
+
+    // Apply user tri-state filters (select = whitelist, exclude = blacklist)
+    if (filters.userFilters.size > 0) {
+      const selected = new Set<string>();
+      const excluded = new Set<string>();
+      for (const [name, state] of filters.userFilters) {
+        if (state === 'select') selected.add(name);
+        else if (state === 'exclude') excluded.add(name);
+      }
+      const prevNodeIds = new Set(nodes.filter((n) => n.type === 'user').map((n) => n.id));
+      if (selected.size > 0) {
+        nodes = nodes.filter((n) => n.type !== 'user' || selected.has(n.label));
+      } else if (excluded.size > 0) {
+        nodes = nodes.filter((n) => n.type !== 'user' || !excluded.has(n.label));
+      }
+      const keptIds = new Set(nodes.filter((n) => n.type === 'user').map((n) => n.id));
+      const removedIds = new Set([...prevNodeIds].filter((id) => !keptIds.has(id)));
+      if (removedIds.size > 0) {
+        edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
+      }
+    }
+
+    // Filter edges by logon type (tri-state: select = whitelist, exclude = blacklist, off = show all)
+    const allLogonTypes = Object.keys(LOGON_TYPE_LABELS).map(Number);
+    const allowedLogonTypes = new Set(resolveTriState(allLogonTypes, filters.logonTypeFilters));
+    edges = edges.filter((e) => e.logonType < 0 || allowedLogonTypes.has(e.logonType));
+
+    // Hide machine/system accounts
+    if (filters.hideMachineAccounts) {
+      const systemAccountIds = new Set(
+        nodes.filter((n) => n.type === 'user' && isSystemAccount(n.label)).map((n) => n.id),
+      );
+      nodes = nodes.filter((n) => !systemAccountIds.has(n.id));
+      edges = edges.filter((e) => !systemAccountIds.has(e.source) && !systemAccountIds.has(e.target));
+    }
+
+    // Filter by IP
+    if (filters.ipFilters.size > 0) {
+      const allowedIps = new Set(resolveTriState(availableIps, filters.ipFilters));
+      edges = edges.filter((e) => !e.ipAddress || e.ipAddress === '-' || allowedIps.has(e.ipAddress));
+    }
+
+    // Filter by auth package
+    if (filters.authPackageFilters.size > 0) {
+      const allowedPkgs = new Set(resolveTriState(availableAuthPackages, filters.authPackageFilters));
+      edges = edges.filter((e) => !e.authPackage || allowedPkgs.has(e.authPackage));
+    }
+
+    // Filter by process
+    if (filters.processFilters.size > 0) {
+      const allowedProcs = new Set(resolveTriState(availableProcesses, filters.processFilters));
+      edges = edges.filter((e) => !e.processName || e.processName === '-' || allowedProcs.has(e.processName));
+    }
+
+    // Filter by failure status
+    if (filters.failureStatusFilters.size > 0) {
+      const allowedStatuses = new Set(resolveTriState(availableFailureStatuses, filters.failureStatusFilters));
+      edges = edges.filter((e) => {
+        if ((!e.failureStatus || e.failureStatus === '0x0') && (!e.failureSubStatus || e.failureSubStatus === '0x0')) return true;
+        return allowedStatuses.has(e.failureStatus) || allowedStatuses.has(e.failureSubStatus);
+      });
+    }
+
+    // Elevated only
+    if (filters.showElevatedOnly) {
+      edges = edges.filter((e) => e.elevatedToken);
+    }
+
+    // Filter by activity range
+    edges = edges.filter((e) =>
+      e.logonCount >= filters.activityMin &&
+      (filters.activityMax === Infinity || e.logonCount <= filters.activityMax)
+    );
+
+    // Remove orphaned nodes (no remaining edges)
+    const connectedIds = new Set<string>();
+    for (const e of edges) {
+      connectedIds.add(e.source);
+      connectedIds.add(e.target);
+    }
+    nodes = nodes.filter((n) => connectedIds.has(n.id));
+
+    return { nodes, edges };
+  }, [fullGraph, filters, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
+
   const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges, visible);
 
   return (
-    <div className="flex flex-col h-full gap-2">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-shrink-0 mb-2">
         <Legend />
         <div className="flex items-center gap-3">
           {nodes.length > 0 && (
@@ -70,19 +265,24 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
             </span>
           )}
           <div className="flex gap-1.5">
+            <ToolbarButton onClick={() => setShowFilters(!showFilters)} active={showFilters}>
+              Filters
+            </ToolbarButton>
             <ToolbarButton onClick={fitToView}>Fit</ToolbarButton>
             <ToolbarButton onClick={resetLayout}>Reset</ToolbarButton>
           </div>
         </div>
       </div>
 
-      {/* Graph container */}
-      <div
-        className="relative flex-1 rounded-lg border border-[#21262d] overflow-hidden"
-        style={{
-          background: 'radial-gradient(ellipse at center, #0d1117 0%, #010409 100%)',
-        }}
-      >
+      {/* Main area: graph + right panel */}
+      <div className="flex flex-1 min-h-0">
+        {/* Graph container — full height always */}
+        <div
+          className="relative flex-1 min-w-0 rounded-lg border border-[#21262d] overflow-hidden"
+          style={{
+            background: 'radial-gradient(ellipse at center, #0d1117 0%, #010409 100%)',
+          }}
+        >
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
             <div className="flex items-center gap-3 text-gray-500 text-sm">
@@ -102,8 +302,37 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
           </div>
         )}
 
-        <div ref={containerRef} className="w-full h-full min-h-[500px]" />
+        <div ref={containerRef} className="w-full h-full" />
         {selected && <NodeDetailPanel selected={selected} />}
+      </div>
+
+        {/* Resize handle + Filter sidebar (right) */}
+        {showFilters && (
+          <>
+            <div
+              onMouseDown={onResizeStart}
+              className="w-1.5 flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[#58a6ff]/10 transition-colors"
+            >
+              <div className="w-[3px] h-10 rounded-full bg-[#30363d] group-hover:bg-[#58a6ff]/60 transition-colors" />
+            </div>
+            <div
+              className="flex-shrink-0 overflow-y-auto gf-scrollbar self-stretch"
+              style={{ width: panelWidth, maxHeight: '100%' }}
+            >
+              <GraphFilterPanel
+                filters={filters}
+                onFiltersChange={setFilters}
+                availableMachines={availableMachines}
+                availableUsers={availableUsers}
+                availableIps={availableIps}
+                availableAuthPackages={availableAuthPackages}
+                availableProcesses={availableProcesses}
+                availableFailureStatuses={availableFailureStatuses}
+                maxActivity={maxActivity}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

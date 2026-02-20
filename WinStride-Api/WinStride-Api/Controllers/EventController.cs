@@ -1,13 +1,13 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OData.Query;
+using Microsoft.AspNetCore.OData.Routing.Controllers;
 using WinStrideApi.Data;
 using WinStrideApi.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace WinStride_Api.Controllers
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class EventController : ControllerBase
+    public class EventController : ODataController
     {
 
         private readonly ApplicationDbContext _context;
@@ -17,7 +17,7 @@ namespace WinStride_Api.Controllers
             _context = context;
         }
 
-        [HttpGet("health")]
+        [HttpGet("api/Event/health")]
         public async Task<IActionResult> CheckHealth()
         {
             bool isDbUp = await _context.Database.CanConnectAsync();
@@ -30,56 +30,13 @@ namespace WinStride_Api.Controllers
             return Ok(new { status = "Healthy", timestamp = DateTime.UtcNow});
         }
 
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<WinEvent>>> GetWinEvents(
-            [FromQuery] int? id,
-            [FromQuery] List<int>? eventIds,
-            [FromQuery] string? machineName,
-            [FromQuery] string? logName,
-            [FromQuery] string? level,
-            [FromQuery] DateTime? startTime,
-            [FromQuery] DateTime? endTime)
+        [EnableQuery(MaxTop = 5000, MaxNodeCount = 500)]
+        public IQueryable<WinEvent> Get()
         {
-            var query = _context.WinEvents.AsQueryable();
-
-            if (id.HasValue)
-            {
-                query = query.Where(e => e.Id == id);
-            }
-            if (eventIds != null && eventIds.Count > 0)
-            {
-                query = query.Where(e => eventIds.Contains(e.EventId));
-            }
-            if (!string.IsNullOrEmpty(machineName))
-            {
-                query = query.Where(e => e.MachineName.Contains(machineName));
-            }
-            if (!string.IsNullOrEmpty(logName))
-            {
-                query = query.Where(e => e.LogName == logName);
-            }
-            if (!string.IsNullOrEmpty(level))
-            {
-                query = query.Where(e => e.Level == level);
-            }
-            if (startTime.HasValue)
-            {
-                var utcStart = DateTime.SpecifyKind(startTime.Value, DateTimeKind.Utc);
-                query = query.Where(e => e.TimeCreated >= utcStart);
-            }
-            if (endTime.HasValue)
-            {
-                var utcEnd = DateTime.SpecifyKind(endTime.Value, DateTimeKind.Utc);
-                query = query.Where(e => e.TimeCreated <= utcEnd);
-            }
-
-            return await query
-                .OrderByDescending(e => e.TimeCreated)
-                .Take(5000)
-                .ToListAsync();
+            return _context.WinEvents.OrderByDescending(e => e.TimeCreated);
         }
 
-        [HttpPost]
+        [HttpPost("api/Event")]
         public async Task<ActionResult> PostWinEvents(List<WinEvent> winEvents)
         {
             if (winEvents == null || !winEvents.Any())
@@ -88,7 +45,7 @@ namespace WinStride_Api.Controllers
             }
             foreach (var winEvent in winEvents)
             {
-                winEvent.TimeCreated = DateTime.SpecifyKind(winEvent.TimeCreated, DateTimeKind.Utc);
+                winEvent.TimeCreated = winEvent.TimeCreated.ToUniversalTime();
             }
             _context.WinEvents.AddRange(winEvents);
             await _context.SaveChangesAsync();
