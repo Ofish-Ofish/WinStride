@@ -28,6 +28,30 @@ function formatLabel(date: Date, intervalMs: number): string {
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
+/**
+ * Resolve effective start/end milliseconds.
+ * When timeStart/timeEnd are empty ("All" / "Now"), derive bounds from data.
+ */
+export function resolveTimeBounds(
+  logons: LogonInfo[],
+  timeStart: string,
+  timeEnd: string,
+): { startMs: number; endMs: number } {
+  const endMs = timeEnd ? new Date(timeEnd).getTime() : Date.now();
+
+  if (timeStart) return { startMs: new Date(timeStart).getTime(), endMs };
+
+  // Open start — scan data for earliest event
+  if (logons.length === 0) return { startMs: endMs - 24 * 3600_000, endMs };
+
+  let min = Infinity;
+  for (const l of logons) {
+    const t = new Date(l.timeCreated).getTime();
+    if (t < min) min = t;
+  }
+  return { startMs: min, endMs };
+}
+
 export function bucketEvents(logons: LogonInfo[], startMs: number, endMs: number): TimeBucket[] {
   const interval = pickInterval(startMs, endMs);
   const bucketStart = Math.floor(startMs / interval) * interval;

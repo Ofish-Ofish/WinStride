@@ -6,6 +6,7 @@ import { buildODataFilter } from '../shared/buildODataFilter';
 import { getDefaultFilters, type GraphFilters } from '../shared/filterTypes';
 import { isSystemAccount } from '../shared/eventMeta';
 import { useDashboardStats } from './useDashboardStats';
+import { resolveTimeBounds } from './timeUtils';
 import TimeRangePicker from './TimeRangePicker';
 import StatCard from './StatCard';
 import TimelineChart from './TimelineChart';
@@ -92,21 +93,10 @@ export default function SecurityMetrics() {
     return all.filter(l => !isSystemAccount(l.targetUserName));
   }, [events]);
 
-  // Derive actual time bounds from data when range is open-ended ("All")
-  const [dataMinMs, dataMaxMs] = useMemo(() => {
-    if (logons.length === 0) return [Date.now() - 24 * 3600_000, Date.now()];
-    let min = Infinity;
-    let max = -Infinity;
-    for (const l of logons) {
-      const t = new Date(l.timeCreated).getTime();
-      if (t < min) min = t;
-      if (t > max) max = t;
-    }
-    return [min, max];
-  }, [logons]);
-
-  const startMs = timeStart ? new Date(timeStart).getTime() : dataMinMs;
-  const endMs = timeEnd ? new Date(timeEnd).getTime() : Date.now();
+  const { startMs, endMs } = useMemo(
+    () => resolveTimeBounds(logons, timeStart, timeEnd),
+    [logons, timeStart, timeEnd],
+  );
 
   const stats = useDashboardStats(logons, startMs, endMs);
 

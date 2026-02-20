@@ -5,6 +5,7 @@ import type { WinEvent, LogonInfo } from '../shared/types';
 import { buildODataFilter } from '../shared/buildODataFilter';
 import { getDefaultFilters, type GraphFilters } from '../shared/filterTypes';
 import { isSystemAccount } from '../shared/eventMeta';
+import { resolveTimeBounds } from '../dashboard/timeUtils';
 import TimeRangePicker from '../dashboard/TimeRangePicker';
 import TimelineChart from '../dashboard/TimelineChart';
 import EntityTimelineCard from './EntityTimelineCard';
@@ -90,19 +91,10 @@ export default function TimelineView() {
     return parseLogons(events).filter(l => !isSystemAccount(l.targetUserName));
   }, [events]);
 
-  // Derive actual time bounds from data when range is open-ended ("All")
-  const dataMinMs = useMemo(() => {
-    if (logons.length === 0) return Date.now() - 24 * 3600_000;
-    let min = Infinity;
-    for (const l of logons) {
-      const t = new Date(l.timeCreated).getTime();
-      if (t < min) min = t;
-    }
-    return min;
-  }, [logons]);
-
-  const startMs = timeStart ? new Date(timeStart).getTime() : dataMinMs;
-  const endMs = timeEnd ? new Date(timeEnd).getTime() : Date.now();
+  const { startMs, endMs } = useMemo(
+    () => resolveTimeBounds(logons, timeStart, timeEnd),
+    [logons, timeStart, timeEnd],
+  );
 
   const { entities, globalBuckets } = useTimelineData(logons, entityMode, startMs, endMs);
 
