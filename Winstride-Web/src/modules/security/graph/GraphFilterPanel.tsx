@@ -14,6 +14,7 @@ import {
   ResizableList,
   DualRangeTrack,
   ToggleSwitch,
+  SeverityFilter,
 } from '../../../components/filter';
 import PresetBar from '../shared/PresetBar';
 
@@ -215,6 +216,14 @@ export default function GraphFilterPanel({
         timeEnd={filters.timeEnd}
         onTimeStartChange={(v) => updateFilter('timeStart', v)}
         onTimeEndChange={(v) => updateFilter('timeEnd', v)}
+      />
+
+      <div className="h-px bg-[#21262d]" />
+
+      {/* Min Risk Level */}
+      <SeverityFilter
+        value={filters.minSeverity}
+        onChange={(v) => updateFilter('minSeverity', v)}
       />
 
       <div className="h-px bg-[#21262d]" />

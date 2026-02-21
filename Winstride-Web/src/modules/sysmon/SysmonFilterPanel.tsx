@@ -6,6 +6,7 @@ import {
   CollapsibleSection,
   TriStateCheckbox,
   cycleMap,
+  SeverityFilter,
 } from '../../components/filter';
 
 interface Props {
@@ -50,6 +51,14 @@ export default function SysmonFilterPanel({
         quickActions={[{ label: 'Clear', onClick: () => updateFilter('eventFilters', new Map()) }]}
         searchable={false}
         defaultHeight={200}
+      />
+
+      <div className="h-px bg-[#21262d]" />
+
+      {/* Min Risk Level */}
+      <SeverityFilter
+        value={filters.minSeverity}
+        onChange={(v) => updateFilter('minSeverity', v)}
       />
 
       <div className="h-px bg-[#21262d]" />

@@ -9,6 +9,7 @@ export { type FilterState, countVisible, resolveTriState, cycleMap } from '../..
 /* ------------------------------------------------------------------ */
 
 import type { FilterState } from '../../../components/filter/filterPrimitives';
+import type { Severity } from '../../../shared/detection/rules';
 
 export interface GraphFilters {
   eventFilters: Map<number, FilterState>;
@@ -25,6 +26,7 @@ export interface GraphFilters {
   activityMin: number; // default 1
   activityMax: number; // default Infinity (no upper cap)
   hideMachineAccounts: boolean;
+  minSeverity: Severity | null; // null = show all
 }
 
 export function getDefaultFilters(): GraphFilters {
@@ -43,6 +45,7 @@ export function getDefaultFilters(): GraphFilters {
     activityMin: 1,
     activityMax: Infinity,
     hideMachineAccounts: true,
+    minSeverity: 'low',
   };
 }
 

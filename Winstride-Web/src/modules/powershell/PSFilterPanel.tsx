@@ -5,6 +5,7 @@ import {
   SearchableFilterList,
   CollapsibleSection,
   ToggleSwitch,
+  SeverityFilter,
 } from '../../components/filter';
 
 interface Props {
@@ -41,6 +42,14 @@ export default function PSFilterPanel({ filters, onFiltersChange, availableMachi
         quickActions={[{ label: 'Clear', onClick: () => updateFilter('eventFilters', new Map()) }]}
         searchable={false}
         defaultHeight={120}
+      />
+
+      <div className="h-px bg-[#21262d]" />
+
+      {/* Min Risk Level */}
+      <SeverityFilter
+        value={filters.minSeverity}
+        onChange={(v) => updateFilter('minSeverity', v)}
       />
 
       <div className="h-px bg-[#21262d]" />

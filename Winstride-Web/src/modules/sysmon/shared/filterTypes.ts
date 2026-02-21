@@ -1,4 +1,5 @@
 import type { FilterState } from '../../../components/filter/filterPrimitives';
+import type { Severity } from '../../../shared/detection/rules';
 
 export type { FilterState };
 
@@ -10,6 +11,7 @@ export interface SysmonFilters {
   processFilters: Map<string, FilterState>;
   integrityFilters: Map<string, FilterState>;
   userFilters: Map<string, FilterState>;
+  minSeverity: Severity | null;
 }
 
 export function getDefaultSysmonFilters(): SysmonFilters {
@@ -21,6 +23,7 @@ export function getDefaultSysmonFilters(): SysmonFilters {
     processFilters: new Map(),
     integrityFilters: new Map(),
     userFilters: new Map(),
+    minSeverity: 'low',
   };
 }
 

@@ -1,4 +1,5 @@
 import type { FilterState } from '../../../components/filter/filterPrimitives';
+import type { Severity } from '../../../shared/detection/rules';
 
 export type { FilterState };
 
@@ -8,6 +9,7 @@ export interface PSFilters {
   timeEnd: string;
   machineFilters: Map<string, FilterState>;
   levelFilter: 'all' | 'warning-only';
+  minSeverity: Severity | null;
 }
 
 export function getDefaultPSFilters(): PSFilters {
@@ -17,6 +19,7 @@ export function getDefaultPSFilters(): PSFilters {
     timeEnd: '',
     machineFilters: new Map(),
     levelFilter: 'all',
+    minSeverity: 'low',
   };
 }
 
