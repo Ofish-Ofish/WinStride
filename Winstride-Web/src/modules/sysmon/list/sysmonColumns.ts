@@ -43,6 +43,16 @@ function getUser(event: WinEvent): string {
 
 export const COLUMNS: ColumnDef[] = [
   {
+    key: 'severity',
+    label: 'Risk',
+    defaultVisible: true,
+    sortable: true,
+    flex: 0.7,
+    minWidth: 60,
+    getValue: (e) => e.id,
+    searchKeys: ['risk'],
+  },
+  {
     key: 'type',
     label: 'Type',
     defaultVisible: true,
@@ -50,6 +60,7 @@ export const COLUMNS: ColumnDef[] = [
     flex: 1.5,
     minWidth: 150,
     getValue: (e) => e.eventId,
+    searchKeys: ['event', 'eventid'],
   },
   {
     key: 'process',
@@ -59,6 +70,7 @@ export const COLUMNS: ColumnDef[] = [
     flex: 2,
     minWidth: 130,
     getValue: getProcessName,
+    searchKeys: ['image'],
   },
   {
     key: 'detail',
@@ -68,6 +80,7 @@ export const COLUMNS: ColumnDef[] = [
     flex: 4,
     minWidth: 200,
     getValue: getDetail,
+    searchKeys: ['command', 'cmd', 'commandline'],
   },
   {
     key: 'user',
@@ -98,6 +111,7 @@ export const COLUMNS: ColumnDef[] = [
     flex: 1.5,
     minWidth: 110,
     getValue: (e) => e.machineName,
+    searchKeys: ['host'],
   },
   {
     key: 'time',

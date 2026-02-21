@@ -1,4 +1,6 @@
 import type { WinEvent } from '../../security/shared/types';
+import type { Detection } from '../../../shared/detection/rules';
+import { SEVERITY_COLORS } from '../../../shared/detection/engine';
 import { parseProcessCreate, parseNetworkConnect, parseFileCreate } from '../shared/parseSysmonEvent';
 import { INTEGRITY_COLORS } from '../shared/eventMeta';
 import { Row, SectionLabel, CopyButton, RawDataToggle } from '../../../components/list/DetailPrimitives';
@@ -134,12 +136,28 @@ function FileCreateDetail({ event }: { event: WinEvent }) {
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 
-export default function SysmonDetailRow({ event }: { event: WinEvent }) {
-  switch (event.eventId) {
-    case 1: return <ProcessCreateDetail event={event} />;
-    case 3: return <NetworkConnectDetail event={event} />;
-    case 11: return <FileCreateDetail event={event} />;
-    default:
-      return <div className="px-6 py-4 text-[12px] text-gray-300 italic bg-[#0d1117]">Unsupported event type</div>;
-  }
+export default function SysmonDetailRow({ event, detections }: { event: WinEvent; detections?: Detection[] }) {
+  return (
+    <>
+      {detections && detections.length > 0 && (
+        <div className="mb-3 space-y-1.5">
+          <div className="text-[11px] font-semibold text-[#ff7b72]">Detections</div>
+          {detections.map((d) => (
+            <div key={d.ruleId} className={`text-[11px] px-2 py-1 rounded border ${SEVERITY_COLORS[d.severity].bg} ${SEVERITY_COLORS[d.severity].border}`}>
+              <span className={`font-semibold ${SEVERITY_COLORS[d.severity].text}`}>[{d.ruleId}]</span>
+              <span className="text-white ml-1.5">{d.ruleName}</span>
+              {d.mitre && <span className="text-gray-300 ml-1.5">({d.mitre})</span>}
+              <div className="text-gray-300 mt-0.5">{d.description}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {event.eventId === 1 && <ProcessCreateDetail event={event} />}
+      {event.eventId === 3 && <NetworkConnectDetail event={event} />}
+      {event.eventId === 11 && <FileCreateDetail event={event} />}
+      {event.eventId !== 1 && event.eventId !== 3 && event.eventId !== 11 && (
+        <div className="px-6 py-4 text-[12px] text-gray-300 italic bg-[#0d1117]">Unsupported event type</div>
+      )}
+    </>
+  );
 }

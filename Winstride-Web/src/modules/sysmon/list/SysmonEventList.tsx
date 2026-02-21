@@ -9,8 +9,10 @@ import { parseProcessCreate, parseNetworkConnect, parseFileCreate } from '../sha
 import SysmonFilterPanel from '../SysmonFilterPanel';
 import SysmonDetailRow from './SysmonDetailRow';
 import type { WinEvent } from '../../security/shared/types';
+import { useSeverityIntegration } from '../../../shared/detection/engine';
+import { renderSeverityCell } from '../../../shared/detection/SeverityBadge';
 import type { ColumnDef } from '../../../shared/listUtils';
-import { relativeTime } from '../../../shared/listUtils';
+import { relativeTime, applySearch } from '../../../shared/listUtils';
 import { resolveTriState } from '../../../components/filter/filterPrimitives';
 import VirtualizedEventList from '../../../components/list/VirtualizedEventList';
 import { COLUMNS, sysmonJsonMapper } from './sysmonColumns';
@@ -53,6 +55,22 @@ function renderCell(col: ColumnDef, event: WinEvent): React.ReactNode | null {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Extra search fields (fields not in column definitions)             */
+/* ------------------------------------------------------------------ */
+
+function getExtraSearchFields(e: WinEvent, severityLabel: string): Record<string, string> {
+  const net = parseNetworkConnect(e);
+  const file = parseFileCreate(e);
+  return {
+    risk: severityLabel, severity: severityLabel,
+    ip: net?.destinationIp ?? '', destination: net?.destinationIp ?? '', dst: net?.destinationIp ?? '',
+    port: String(net?.destinationPort ?? ''),
+    protocol: net?.protocol ?? '',
+    file: file?.targetFilename ?? '', path: file?.targetFilename ?? '',
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -86,6 +104,8 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
     refetchInterval: 30_000,
     enabled: visible,
   });
+
+  const sev = useSeverityIntegration(rawEvents, 'sysmon');
 
   /* ---- Available values for filter panel ---- */
   const { availableMachines, availableProcesses, availableUsers } = useMemo(() => {
@@ -168,29 +188,22 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
       });
     }
 
-    // Search
-    if (debouncedSearch) {
-      const lowerSearch = debouncedSearch.toLowerCase();
-      events = events.filter((e) => {
-        const proc = parseProcessCreate(e);
-        const net = parseNetworkConnect(e);
-        const file = parseFileCreate(e);
-        const searchable = [
-          String(e.eventId),
-          SYSMON_EVENT_LABELS[e.eventId] ?? '',
-          e.machineName,
-          proc?.imageName ?? '', proc?.commandLine ?? '', proc?.user ?? '', proc?.parentImageName ?? '',
-          net?.imageName ?? '', net?.destinationIp ?? '', String(net?.destinationPort ?? ''), net?.user ?? '',
-          file?.imageName ?? '', file?.targetFilename ?? '', file?.user ?? '',
-        ].join(' ').toLowerCase();
-        return searchable.includes(lowerSearch);
-      });
-    }
+    // Search — column-driven field:value + plain text
+    events = applySearch(events, debouncedSearch, COLUMNS, (e) => {
+      const sevInfo = sev.getEventSeverity(e);
+      return getExtraSearchFields(e, sevInfo ? sevInfo.severity : '');
+    });
 
     return events;
-  }, [rawEvents, filters, debouncedSearch, availableProcesses, availableUsers]);
+  }, [rawEvents, filters, debouncedSearch, sev, availableProcesses, availableUsers]);
 
   const toggleFilters = useCallback(() => setShowFilters((v) => !v), []);
+
+  /* ---- Severity filter ---- */
+  const severityFilteredEvents = useMemo(
+    () => sev.filterBySeverity(filteredEvents, filters.minSeverity),
+    [filteredEvents, sev, filters.minSeverity],
+  );
 
   /* ---- Render ---- */
   return (
@@ -200,13 +213,13 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
       error={!!error}
       columns={COLUMNS}
       columnsStorageKey="winstride:sysmonColumns"
-      searchPlaceholder="Search processes, IPs, files..."
+      searchPlaceholder="Search... (process:cmd.exe ip:10.0 user:admin)"
       emptyMessage="No events found. Make sure the Agent is collecting Sysmon events."
       eventLabels={SYSMON_EVENT_LABELS}
       eventIdColumnKey="type"
       exportPrefix="winstride-sysmon"
-      renderCell={renderCell}
-      renderDetailRow={(event) => <SysmonDetailRow event={event} />}
+      renderCell={(col, event) => renderSeverityCell(col, event, sev) ?? renderCell(col, event)}
+      renderDetailRow={(event) => <SysmonDetailRow event={event} detections={sev.detections.byEventId.get(event.id)} />}
       renderFilterPanel={() => (
         <SysmonFilterPanel
           filters={filters}
@@ -218,11 +231,12 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
       )}
       showFilters={showFilters}
       onToggleFilters={toggleFilters}
-      filteredEvents={filteredEvents}
+      filteredEvents={severityFilteredEvents}
       rawCount={rawEvents?.length ?? 0}
       search={search}
       onSearchChange={setSearch}
       jsonMapper={sysmonJsonMapper}
+      getSortValue={sev.getSortValue}
     />
   );
 }
