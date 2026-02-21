@@ -8,7 +8,7 @@ export default function PowerShellDashboard() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <h2 className="text-xl font-semibold mb-4">PowerShell Events</h2>
-      <PSEventList visible={viewMode === 'list' || viewMode === 'dashboard'} />
+      <PSEventList visible={viewMode === 'list'} />
     </div>
   );
 }

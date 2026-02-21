@@ -7,8 +7,8 @@ export type ViewMode = 'list' | 'graph' | 'dashboard' | 'timeline';
 
 const MODULE_VIEWS: Record<string, ViewMode[]> = {
   security:   ['dashboard', 'list', 'graph', 'timeline'],
-  powershell: ['dashboard', 'list'],
-  sysmon:     ['dashboard', 'list', 'graph'],
+  powershell: ['list'],
+  sysmon:     ['list', 'graph'],
 };
 
 export default function Layout() {
@@ -19,7 +19,7 @@ export default function Layout() {
   const availableViews = MODULE_VIEWS[currentModule] ?? ['dashboard', 'list'];
 
   // Reset to dashboard if current view isn't available for this module
-  const effectiveViewMode = availableViews.includes(viewMode) ? viewMode : 'dashboard';
+  const effectiveViewMode = availableViews.includes(viewMode) ? viewMode : availableViews[0];
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-white">

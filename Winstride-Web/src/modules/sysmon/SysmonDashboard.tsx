@@ -9,8 +9,8 @@ export default function SysmonDashboard() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <h2 className="text-xl font-semibold mb-4">Sysmon Events</h2>
-      <div className={viewMode === 'list' || viewMode === 'dashboard' ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
-        <SysmonEventList visible={viewMode === 'list' || viewMode === 'dashboard'} />
+      <div className={viewMode === 'list' ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
+        <SysmonEventList visible={viewMode === 'list'} />
       </div>
       <div className={viewMode === 'graph' ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
         <ProcessTree visible={viewMode === 'graph'} />
