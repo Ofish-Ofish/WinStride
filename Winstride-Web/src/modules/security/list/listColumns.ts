@@ -2,6 +2,8 @@ import type { WinEvent } from '../shared/types';
 import type { ColumnDef } from '../../../shared/listUtils';
 import { getDataField } from '../../../shared/eventParsing';
 import { EVENT_LABELS, LOGON_TYPE_LABELS } from '../shared/eventMeta';
+import type { Detection } from '../../../shared/detection/rules';
+import { maxSeverity, SEVERITY_LABELS, SEVERITY_COLORS } from '../../../shared/detection/engine';
 
 /* ------------------------------------------------------------------ */
 /*  Event data parsing                                                 */
@@ -86,6 +88,16 @@ export function parseEventData(event: WinEvent): ParsedEventData | null {
 
 export const COLUMNS: ColumnDef[] = [
   {
+    key: 'severity',
+    label: 'Risk',
+    defaultVisible: true,
+    sortable: true,
+    flex: 0.7,
+    minWidth: 60,
+    getValue: (e) => e.id, // sorting uses the detection map externally
+    searchKeys: ['risk'],
+  },
+  {
     key: 'eventId',
     label: 'Event ID',
     defaultVisible: true,
@@ -93,15 +105,7 @@ export const COLUMNS: ColumnDef[] = [
     flex: 2,
     minWidth: 150,
     getValue: (e) => e.eventId,
-  },
-  {
-    key: 'level',
-    label: 'Level',
-    defaultVisible: true,
-    sortable: true,
-    flex: 1,
-    minWidth: 90,
-    getValue: (e) => e.level ?? '',
+    searchKeys: ['event', 'id'],
   },
   {
     key: 'user',
@@ -111,6 +115,7 @@ export const COLUMNS: ColumnDef[] = [
     flex: 2,
     minWidth: 120,
     getValue: (e) => parseEventData(e)?.targetUserName ?? '',
+    searchKeys: ['target'],
   },
   {
     key: 'machine',
@@ -120,6 +125,7 @@ export const COLUMNS: ColumnDef[] = [
     flex: 2,
     minWidth: 120,
     getValue: (e) => e.machineName,
+    searchKeys: ['host'],
   },
   {
     key: 'logonType',
@@ -129,6 +135,7 @@ export const COLUMNS: ColumnDef[] = [
     flex: 1.2,
     minWidth: 100,
     getValue: (e) => parseEventData(e)?.logonTypeLabel ?? '',
+    searchKeys: ['logon', 'type'],
   },
   {
     key: 'ip',
@@ -141,6 +148,7 @@ export const COLUMNS: ColumnDef[] = [
       const ip = parseEventData(e)?.ipAddress;
       return ip && ip !== '-' ? ip : '';
     },
+    searchKeys: ['address'],
   },
   {
     key: 'time',

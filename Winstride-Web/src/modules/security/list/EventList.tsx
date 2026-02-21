@@ -8,25 +8,12 @@ import { loadFiltersFromStorage, saveFiltersToStorage } from '../shared/filterSe
 import { buildODataFilter } from '../shared/buildODataFilter';
 import type { WinEvent } from '../shared/types';
 import type { ColumnDef } from '../../../shared/listUtils';
-import { relativeTime } from '../../../shared/listUtils';
+import { relativeTime, applySearch } from '../../../shared/listUtils';
 import EventDetailRow from './EventDetailRow';
 import VirtualizedEventList from '../../../components/list/VirtualizedEventList';
-import { COLUMNS, parseEventData, securityJsonMapper, type ParsedEventData } from './listColumns';
-
-/* ------------------------------------------------------------------ */
-/*  Level badge                                                        */
-/* ------------------------------------------------------------------ */
-
-function LevelBadge({ level }: { level: string | null }) {
-  if (!level) return <span className="text-gray-400">-</span>;
-  const colors: Record<string, string> = {
-    Information: 'text-blue-300',
-    Warning: 'text-yellow-300',
-    Error: 'text-red-400',
-    Critical: 'text-red-300 font-semibold',
-  };
-  return <span className={colors[level] ?? 'text-gray-200'}>{level}</span>;
-}
+import { COLUMNS, parseEventData, securityJsonMapper } from './listColumns';
+import { useSeverityIntegration } from '../../../shared/detection/engine';
+import { renderSeverityCell } from '../../../shared/detection/SeverityBadge';
 
 /* ------------------------------------------------------------------ */
 /*  Cell renderer                                                      */
@@ -55,8 +42,6 @@ function renderCell(col: ColumnDef, event: WinEvent): React.ReactNode | null {
         </span>
       );
     }
-    case 'level':
-      return <LevelBadge level={event.level} />;
     case 'time':
       return (
         <span title={new Date(event.timeCreated).toISOString()}>
@@ -69,27 +54,27 @@ function renderCell(col: ColumnDef, event: WinEvent): React.ReactNode | null {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Query field resolver (for field:value search syntax)               */
+/*  Extra search fields (fields not in column definitions)             */
 /* ------------------------------------------------------------------ */
 
-function getFieldForQuery(field: string, e: WinEvent, parsed: ParsedEventData | null, label: string): string | null {
-  switch (field) {
-    case 'event': case 'eventid': case 'id': return `${e.eventId} ${label}`;
-    case 'level': return e.level ?? '';
-    case 'machine': case 'host': return e.machineName;
-    case 'user': case 'target': return parsed?.targetUserName ?? '';
-    case 'domain': return parsed?.targetDomainName ?? '';
-    case 'subject': return parsed?.subjectUserName ?? '';
-    case 'logontype': case 'logon': case 'type': return parsed?.logonTypeLabel ?? '';
-    case 'ip': case 'address': return parsed?.ipAddress ?? '';
-    case 'port': return parsed?.ipPort ?? '';
-    case 'auth': case 'package': return parsed?.authPackage ?? '';
-    case 'process': return parsed?.processName ?? '';
-    case 'workstation': return parsed?.workstationName ?? '';
-    case 'status': case 'failure': return `${parsed?.failureStatus ?? ''} ${parsed?.failureSubStatus ?? ''}`;
-    case 'elevated': case 'admin': return parsed?.elevatedToken ? 'yes' : 'no';
-    default: return null;
-  }
+function getExtraSearchFields(e: WinEvent, severityLabel: string): Record<string, string> {
+  const parsed = parseEventData(e);
+  return {
+    // Risk / severity (from detection engine)
+    risk: severityLabel, severity: severityLabel,
+    // Fields not exposed as columns
+    level: e.level ?? '',
+    domain: parsed?.targetDomainName ?? '',
+    subject: parsed?.subjectUserName ?? '',
+    port: parsed?.ipPort ?? '',
+    auth: parsed?.authPackage ?? '', package: parsed?.authPackage ?? '',
+    process: parsed?.processName ?? '',
+    workstation: parsed?.workstationName ?? '',
+    status: `${parsed?.failureStatus ?? ''} ${parsed?.failureSubStatus ?? ''}`,
+    failure: `${parsed?.failureStatus ?? ''} ${parsed?.failureSubStatus ?? ''}`,
+    elevated: parsed?.elevatedToken ? 'yes' : 'no',
+    admin: parsed?.elevatedToken ? 'yes' : 'no',
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -126,6 +111,8 @@ export default function EventList({ visible }: { visible: boolean }) {
     refetchInterval: 30_000,
     enabled: visible,
   });
+
+  const sev = useSeverityIntegration(rawEvents, 'security');
 
   /* ---- Available values for filter panel ---- */
   const { availableMachines, availableUsers, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses } = useMemo(() => {
@@ -266,39 +253,23 @@ export default function EventList({ visible }: { visible: boolean }) {
       });
     }
 
-    // Search — supports plain text and field:value queries
-    if (debouncedSearch) {
-      const terms = debouncedSearch.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
-      events = events.filter((e) => {
-        const parsed = parseEventData(e);
-        const label = EVENT_LABELS[e.eventId] ?? '';
-        const allFields = [
-          String(e.eventId), label, e.level ?? '', e.machineName, e.timeCreated,
-          parsed?.targetUserName ?? '', parsed?.targetDomainName ?? '',
-          parsed?.subjectUserName ?? '', parsed?.subjectDomainName ?? '',
-          parsed?.logonTypeLabel ?? '', parsed?.ipAddress ?? '', parsed?.ipPort ?? '',
-          parsed?.authPackage ?? '', parsed?.logonProcess ?? '',
-          parsed?.workstationName ?? '', parsed?.processName ?? '',
-          parsed?.failureStatus ?? '', parsed?.failureSubStatus ?? '',
-        ].join(' ').toLowerCase();
-
-        return terms.every((term) => {
-          const colonIdx = term.indexOf(':');
-          if (colonIdx > 0) {
-            const field = term.slice(0, colonIdx).toLowerCase();
-            let value = term.slice(colonIdx + 1).toLowerCase().replace(/^"|"$/g, '');
-            const fieldValue = getFieldForQuery(field, e, parsed, label);
-            if (fieldValue !== null) return fieldValue.toLowerCase().includes(value);
-          }
-          return allFields.includes(term.toLowerCase().replace(/^"|"$/g, ''));
-        });
-      });
-    }
+    // Search — column-driven field:value + plain text
+    events = applySearch(events, debouncedSearch, COLUMNS, (e) => {
+      const sevInfo = sev.getEventSeverity(e);
+      const sevLabel = sevInfo ? sevInfo.severity : '';
+      return getExtraSearchFields(e, sevLabel);
+    });
 
     return events;
-  }, [rawEvents, filters, debouncedSearch, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
+  }, [rawEvents, filters, debouncedSearch, sev, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
 
   const toggleFilters = useCallback(() => setShowFilters((v) => !v), []);
+
+  /* ---- Severity filter ---- */
+  const severityFilteredEvents = useMemo(
+    () => sev.filterBySeverity(filteredEvents, filters.minSeverity),
+    [filteredEvents, sev, filters.minSeverity],
+  );
 
   /* ---- Render ---- */
   return (
@@ -313,8 +284,8 @@ export default function EventList({ visible }: { visible: boolean }) {
       eventLabels={EVENT_LABELS}
       eventIdColumnKey="eventId"
       exportPrefix="winstride-events"
-      renderCell={renderCell}
-      renderDetailRow={(event) => <EventDetailRow event={event} />}
+      renderCell={(col, event) => renderSeverityCell(col, event, sev) ?? renderCell(col, event)}
+      renderDetailRow={(event) => <EventDetailRow event={event} detections={sev.detections.byEventId.get(event.id)} />}
       renderFilterPanel={() => (
         <GraphFilterPanel
           filters={filters}
@@ -330,11 +301,12 @@ export default function EventList({ visible }: { visible: boolean }) {
       )}
       showFilters={showFilters}
       onToggleFilters={toggleFilters}
-      filteredEvents={filteredEvents}
+      filteredEvents={severityFilteredEvents}
       rawCount={rawEvents?.length ?? 0}
       search={search}
       onSearchChange={setSearch}
       jsonMapper={securityJsonMapper}
+      getSortValue={sev.getSortValue}
     />
   );
 }
