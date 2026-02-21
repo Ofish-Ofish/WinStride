@@ -13,7 +13,7 @@ import { processTreeStyles, processTreeLayout } from './processTreeStyles';
 import type { WinEvent } from '../../security/shared/types';
 import { resolveTriState } from '../../../components/filter/filterPrimitives';
 import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
-import { useSeverityIntegration, SEVERITY_COLORS, SEVERITY_LABELS, maxSeverity } from '../../../shared/detection/engine';
+import { useSeverityIntegration, SEVERITY_COLORS, SEVERITY_LABELS, maxSeverity, edgeSeverity } from '../../../shared/detection/engine';
 import type { Detection } from '../../../shared/detection/rules';
 import { useCytoscape } from '../../../shared/graph';
 
@@ -365,9 +365,15 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     [treeData.edges],
   );
 
+  // Compute severity for each edge from its eventIds
+  const edgesWithSeverity = useMemo(
+    () => graphEdges.map((e) => ({ ...e, severity: edgeSeverity(e.eventIds, sevDetections) })),
+    [graphEdges, sevDetections],
+  );
+
   /* ---- Shared Cytoscape hook ---- */
   const { selected, fitToView, resetLayout } = useCytoscape(
-    containerRef, graphNodes, graphEdges, visible, {
+    containerRef, graphNodes, edgesWithSeverity, visible, {
       styles: processTreeStyles,
       layout: processTreeLayout,
       minZoom: 0.15,

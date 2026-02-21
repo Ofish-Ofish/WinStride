@@ -32,6 +32,7 @@ export interface AggregatedEdge {
   target: string;
   type: 'spawned' | 'connected' | 'created';
   count: number;           // number of times this relationship occurred
+  eventIds: number[];      // event IDs for detection lookup
 }
 
 export interface AggregatedTreeData {
@@ -159,10 +160,11 @@ export function buildAggregatedTree(
       const edgeId = `spawned-${parentKey}-${childKey}`;
       let edge = edgeMap.get(edgeId);
       if (!edge) {
-        edge = { id: edgeId, source: parentKey, target: childKey, type: 'spawned', count: 0 };
+        edge = { id: edgeId, source: parentKey, target: childKey, type: 'spawned', count: 0, eventIds: [] };
         edgeMap.set(edgeId, edge);
       }
       edge.count++;
+      edge.eventIds.push(event.id);
     }
   }
 
@@ -201,10 +203,11 @@ export function buildAggregatedTree(
     const edgeId = `connected-${processKey}-${networkKey}`;
     let edge = edgeMap.get(edgeId);
     if (!edge) {
-      edge = { id: edgeId, source: processKey, target: networkKey, type: 'connected', count: 0 };
+      edge = { id: edgeId, source: processKey, target: networkKey, type: 'connected', count: 0, eventIds: [] };
       edgeMap.set(edgeId, edge);
     }
     edge.count++;
+    edge.eventIds.push(event.id);
   }
 
   // ── Pass 3: File events (Event 11) ────────────────────────────────
@@ -245,10 +248,11 @@ export function buildAggregatedTree(
     const edgeId = `created-${processKey}-${fileKey}`;
     let edge = edgeMap.get(edgeId);
     if (!edge) {
-      edge = { id: edgeId, source: processKey, target: fileKey, type: 'created', count: 0 };
+      edge = { id: edgeId, source: processKey, target: fileKey, type: 'created', count: 0, eventIds: [] };
       edgeMap.set(edgeId, edge);
     }
     edge.count++;
+    edge.eventIds.push(event.id);
   }
 
   return {

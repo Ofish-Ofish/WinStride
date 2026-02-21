@@ -13,7 +13,7 @@ import { loadFiltersFromStorage, saveFiltersToStorage } from '../shared/filterSe
 import { buildODataFilter } from '../shared/buildODataFilter';
 import type { WinEvent, GraphNode, GraphEdge } from '../shared/types';
 import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
-import { useSeverityIntegration } from '../../../shared/detection/engine';
+import { useSeverityIntegration, edgeSeverity } from '../../../shared/detection/engine';
 
 /* ── Hub-spoke position calculator (pre-layout seed) ─────────────── */
 
@@ -341,7 +341,13 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     return { nodes, edges };
   }, [fullGraph, filters, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
 
-  const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edges, visible, {
+  // Compute severity for each edge from its eventIds
+  const edgesWithSeverity = useMemo(
+    () => edges.map((e) => ({ ...e, severity: edgeSeverity(e.eventIds, sevDetections) })),
+    [edges, sevDetections],
+  );
+
+  const { selected, fitToView, resetLayout } = useCytoscape(containerRef, nodes, edgesWithSeverity, visible, {
     styles: graphStyles,
     layout: coseLayout,
     preLayout: preLayoutHubSpoke,

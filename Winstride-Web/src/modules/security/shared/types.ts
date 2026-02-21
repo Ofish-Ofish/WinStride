@@ -9,6 +9,7 @@ export interface WinEvent {
 }
 
 export interface LogonInfo {
+  id: number;
   targetUserName: string;
   targetDomainName: string;
   machineName: string;
@@ -66,4 +67,6 @@ export interface GraphEdge {
   elevatedToken: boolean;
   failureStatus: string;
   failureSubStatus: string;
+  eventIds: number[];
+  isFailed: boolean;
 }

@@ -65,7 +65,6 @@ function DetectionsSummary({ detections }: { detections: Detection[] }) {
   if (detections.length === 0) return null;
   const sev = maxSeverity(detections);
   if (!sev) return null;
-  const colors = SEVERITY_COLORS[sev];
   return (
     <>
       <SectionLabel>Detections</SectionLabel>
@@ -162,6 +161,18 @@ function NodePanel({ data, detections }: { data: Record<string, unknown>; detect
   );
 }
 
+function resolveEdgeDetections(eventIds: unknown, detections?: DetectionMap): Detection[] {
+  if (!detections || !Array.isArray(eventIds)) return [];
+  const seen = new Set<string>();
+  const result: Detection[] = [];
+  for (const eid of eventIds as number[]) {
+    for (const d of detections.byEventId.get(eid) ?? []) {
+      if (!seen.has(d.ruleId)) { seen.add(d.ruleId); result.push(d); }
+    }
+  }
+  return result;
+}
+
 function EdgePanel({ data, detections }: { data: Record<string, unknown>; detections?: DetectionMap }) {
   const firstSeen = data.firstSeen as string;
   const lastSeen = data.lastSeen as string;
@@ -248,8 +259,8 @@ function EdgePanel({ data, detections }: { data: Record<string, unknown>; detect
         {firstSeen && <Row label="First seen" value={formatTime(firstSeen)} />}
         {lastSeen && <Row label="Last seen" value={formatTime(lastSeen)} />}
 
-        {/* Detections */}
-        {detections && <DetectionsSummary detections={detections.all} />}
+        {/* Detections (scoped to this edge's events) */}
+        <DetectionsSummary detections={resolveEdgeDetections(data.eventIds, detections)} />
       </div>
     </div>
   );

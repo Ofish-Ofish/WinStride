@@ -197,6 +197,24 @@ export const processTreeStyles: CyStylesheet[] = [
     },
   },
 
+  // Severity edge colors (info omitted — matches default)
+  {
+    selector: 'edge[severity = "low"]',
+    style: { 'line-color': '#58a6ff', 'target-arrow-color': '#58a6ff' },
+  },
+  {
+    selector: 'edge[severity = "medium"]',
+    style: { 'line-color': '#f0883e', 'target-arrow-color': '#f0883e' },
+  },
+  {
+    selector: 'edge[severity = "high"]',
+    style: { 'line-color': '#f85149', 'target-arrow-color': '#f85149', width: 'mapData(count, 1, 50, 2, 6)' },
+  },
+  {
+    selector: 'edge[severity = "critical"]',
+    style: { 'line-color': '#da3633', 'target-arrow-color': '#ff3b30', width: 'mapData(count, 1, 50, 2.5, 7)' },
+  },
+
   // Highlighted — selected + neighbors
   {
     selector: 'node.highlighted',
@@ -247,6 +265,23 @@ export const processTreeStyles: CyStylesheet[] = [
       opacity: 0.9,
       'z-index': 10,
     },
+  },
+  // Highlighted severity edges — brighter variants
+  {
+    selector: 'edge.highlighted[severity = "low"]',
+    style: { 'line-color': '#79c0ff', 'target-arrow-color': '#79c0ff' },
+  },
+  {
+    selector: 'edge.highlighted[severity = "medium"]',
+    style: { 'line-color': '#f0a050', 'target-arrow-color': '#f0a050' },
+  },
+  {
+    selector: 'edge.highlighted[severity = "high"]',
+    style: { 'line-color': '#ff7b72', 'target-arrow-color': '#ff7b72', width: 'mapData(count, 1, 50, 2.5, 7)' },
+  },
+  {
+    selector: 'edge.highlighted[severity = "critical"]',
+    style: { 'line-color': '#ff3b30', 'target-arrow-color': '#ff3b30', width: 'mapData(count, 1, 50, 3, 8)' },
   },
 
   // Dimmed

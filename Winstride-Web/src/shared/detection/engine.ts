@@ -112,6 +112,22 @@ export const SEVERITY_LABELS: Record<Severity, string> = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Edge severity helper                                               */
+/* ------------------------------------------------------------------ */
+
+export function edgeSeverity(eventIds: number[], detections: DetectionMap): Severity | '' {
+  if (eventIds.length === 0) return '';
+  const dets: Detection[] = [];
+  const seen = new Set<string>();
+  for (const eid of eventIds) {
+    for (const d of detections.byEventId.get(eid) ?? []) {
+      if (!seen.has(d.ruleId)) { seen.add(d.ruleId); dets.push(d); }
+    }
+  }
+  return dets.length > 0 ? (maxSeverity(dets) ?? '') : '';
+}
+
+/* ------------------------------------------------------------------ */
 /*  React hook                                                         */
 /* ------------------------------------------------------------------ */
 

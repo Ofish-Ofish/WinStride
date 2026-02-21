@@ -38,6 +38,7 @@ function parseLogons(events: WinEvent[]): LogonInfo[] {
       if (!targetUserName) continue;
 
       results.push({
+        id: event.id,
         targetUserName,
         targetDomainName: get('TargetDomainName'),
         machineName: event.machineName,

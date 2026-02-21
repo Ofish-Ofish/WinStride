@@ -48,6 +48,7 @@ function extractLogonInfo(event: WinEvent): LogonInfo | null {
     if (!targetUserName) return null;
 
     return {
+      id: event.id,
       targetUserName,
       targetDomainName: getDataField(dataArray, 'TargetDomainName'),
       machineName: event.machineName,
@@ -157,10 +158,13 @@ export function transformEvents(events: WinEvent[]): {
         elevatedToken: logon.elevatedToken,
         failureStatus: logon.failureStatus,
         failureSubStatus: logon.failureSubStatus,
+        eventIds: [],
+        isFailed: logon.eventId === 4625,
       });
     }
     const edge = edgeMap.get(edgeKey)!;
     edge.logonCount++;
+    edge.eventIds.push(logon.id);
     if (logon.timeCreated > edge.lastSeen) {
       edge.lastSeen = logon.timeCreated;
       // Update fields from most recent event
