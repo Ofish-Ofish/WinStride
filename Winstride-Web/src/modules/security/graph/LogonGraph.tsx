@@ -6,16 +6,16 @@ import { useCytoscape } from '../../../shared/graph';
 import { graphStyles } from './graphStyles';
 import { coseLayout } from './graphLayout';
 import type { Core } from 'cytoscape';
-import type { GraphNode, GraphEdge } from '../shared/types';
 import NodeDetailPanel from './NodeDetailPanel';
 import GraphFilterPanel from './GraphFilterPanel';
 import { DEFAULT_FILTERS, resolveTriState, type GraphFilters } from '../shared/filterTypes';
 import { loadFiltersFromStorage, saveFiltersToStorage } from '../shared/filterSerializer';
 import { buildODataFilter } from '../shared/buildODataFilter';
-import type { WinEvent } from '../shared/types';
+import type { WinEvent, GraphNode, GraphEdge } from '../shared/types';
 import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
+import { useSeverityIntegration } from '../../../shared/detection/engine';
 
-/* ── Security-specific layout helpers ────────────────────────────── */
+/* ── Hub-spoke position calculator (pre-layout seed) ─────────────── */
 
 function computeHubSpokePositions(
   nodes: GraphNode[],
@@ -31,7 +31,8 @@ function computeHubSpokePositions(
   for (const u of users) userToMachines.set(u.id, []);
 
   for (const edge of edges) {
-    const src = edge.source, tgt = edge.target;
+    const src = edge.source;
+    const tgt = edge.target;
     if (machineToUsers.has(tgt) && userToMachines.has(src)) {
       if (!machineToUsers.get(tgt)!.includes(src)) machineToUsers.get(tgt)!.push(src);
       if (!userToMachines.get(src)!.includes(tgt)) userToMachines.get(src)!.push(tgt);
@@ -57,9 +58,10 @@ function computeHubSpokePositions(
   const userPositionSums = new Map<string, { x: number; y: number; count: number }>();
   for (const [machineId, connectedUsers] of machineToUsers) {
     const machinePos = positions.get(machineId)!;
-    if (connectedUsers.length === 0) continue;
+    const count = connectedUsers.length;
+    if (count === 0) continue;
     connectedUsers.forEach((userId, i) => {
-      const angle = (2 * Math.PI * i) / connectedUsers.length - Math.PI / 2;
+      const angle = (2 * Math.PI * i) / count - Math.PI / 2;
       const ux = machinePos.x + Math.cos(angle) * spokeRadius;
       const uy = machinePos.y + Math.sin(angle) * spokeRadius;
       const existing = userPositionSums.get(userId);
@@ -78,6 +80,8 @@ function computeHubSpokePositions(
   return positions;
 }
 
+/* ── Post-layout: double distances from center ───────────────────── */
+
 function doubleDistancesFromCenter(cy: Core) {
   const center = { x: 0, y: 0 };
   const allNodes = cy.nodes();
@@ -91,6 +95,8 @@ function doubleDistancesFromCenter(cy: Core) {
     });
   });
 }
+
+/* ── Pre-layout: seed hub-spoke positions for resetLayout ────────── */
 
 function preLayoutHubSpoke(cy: Core) {
   const currentNodes: GraphNode[] = cy.nodes().map((n) => n.data() as GraphNode);
@@ -162,16 +168,24 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     queryKey: ['events', 'security-graph', odataFilter],
     queryFn: () => fetchEvents({
       $filter: odataFilter,
-      $select: 'eventId,machineName,timeCreated,eventData',
+      $select: 'id,eventId,machineName,timeCreated,eventData',
     }),
     refetchInterval: 30000,
   });
 
+  const sev = useSeverityIntegration(events, 'security');
+
+  // Step 0: apply severity filter to raw events before graph aggregation
+  const filteredByRisk = useMemo(() => {
+    if (!events) return [];
+    return sev.filterBySeverity(events, filters.minSeverity);
+  }, [events, sev, filters.minSeverity]);
+
   // Step 1: transform raw events into nodes & edges
   const fullGraph = useMemo(() => {
-    if (!events) return { nodes: [], edges: [] };
-    return transformEvents(events);
-  }, [events]);
+    if (filteredByRisk.length === 0) return { nodes: [], edges: [] };
+    return transformEvents(filteredByRisk);
+  }, [filteredByRisk]);
 
   // Extract available machines and users for the filter panel
   const availableMachines = useMemo(
@@ -384,7 +398,7 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
         )}
 
         <div ref={containerRef} className="w-full h-full" />
-        {selected && <NodeDetailPanel selected={selected} />}
+        {selected && <NodeDetailPanel selected={selected} detections={sev.detections} />}
       </div>
 
         {/* Resize handle + Filter sidebar (right) */}

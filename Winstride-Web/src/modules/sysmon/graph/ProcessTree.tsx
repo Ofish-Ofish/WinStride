@@ -1,18 +1,36 @@
-import { useRef, useMemo, useState, useCallback, useEffect } from 'react';
+import { useRef, useMemo, useState, useCallback, useEffect, useTransition } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchEvents } from '../../../api/client';
-import { useCytoscape } from '../../../shared/graph';
-import { DEFAULT_SYSMON_FILTERS, type SysmonFilters } from '../shared/filterTypes';
-import { loadSysmonFilters, saveSysmonFilters } from '../shared/filterSerializer';
+import { type SysmonFilters } from '../shared/filterTypes';
+import type { FilterState } from '../../../components/filter/filterPrimitives';
+import { saveSysmonFilters } from '../shared/filterSerializer';
 import { buildSysmonFilter } from '../shared/buildSysmonFilter';
 import { parseProcessCreate, parseNetworkConnect, parseFileCreate } from '../shared/parseSysmonEvent';
 import { INTEGRITY_COLORS } from '../shared/eventMeta';
 import SysmonFilterPanel from '../SysmonFilterPanel';
-import { buildProcessTree, type ProcessNode } from './transformSysmon';
+import { buildAggregatedTree, type AggregatedNode } from './transformSysmon';
 import { processTreeStyles, processTreeLayout } from './processTreeStyles';
 import type { WinEvent } from '../../security/shared/types';
 import { resolveTriState } from '../../../components/filter/filterPrimitives';
 import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
+import { useSeverityIntegration, SEVERITY_COLORS, SEVERITY_LABELS, maxSeverity } from '../../../shared/detection/engine';
+import type { Detection } from '../../../shared/detection/rules';
+import { useCytoscape } from '../../../shared/graph';
+
+/* ------------------------------------------------------------------ */
+/*  Graph-specific defaults: process creation only                     */
+/* ------------------------------------------------------------------ */
+
+const GRAPH_DEFAULT_FILTERS: SysmonFilters = {
+  eventFilters: new Map<number, FilterState>([[1, 'select']]),
+  timeStart: new Date(Date.now() - 86_400_000).toISOString(), // 24h
+  timeEnd: '',
+  machineFilters: new Map(),
+  processFilters: new Map(),
+  integrityFilters: new Map(),
+  userFilters: new Map(),
+  minSeverity: 'low',
+};
 
 /* ------------------------------------------------------------------ */
 /*  Legend                                                              */
@@ -20,14 +38,14 @@ import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
 
 function Legend() {
   return (
-    <div className="flex items-center gap-5 text-[11px] text-gray-400">
+    <div className="flex items-center gap-5 text-[11px] text-gray-300">
       <span className="flex items-center gap-2">
         <span className="w-3 h-3 rounded-full bg-[#3b82f6] inline-block" />
-        Normal
+        Process
       </span>
       <span className="flex items-center gap-2">
         <span className="w-3 h-3 rounded-full bg-[#eab308] inline-block" />
-        High
+        High Integrity
       </span>
       <span className="flex items-center gap-2">
         <span className="w-3 h-3 rounded-full bg-[#f85149] inline-block" />
@@ -39,45 +57,152 @@ function Legend() {
       </span>
       <span className="flex items-center gap-2">
         <span className="w-3 h-3 rounded-sm bg-[#f0883e] inline-block" />
-        File
+        File Dir
       </span>
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  Detail panel for selected node                                     */
+/*  Detail panel for selected aggregated node                          */
 /* ------------------------------------------------------------------ */
 
-function NodeDetail({ node }: { node: ProcessNode }) {
+function DetectionsSummary({ detections }: { detections: Detection[] }) {
+  if (detections.length === 0) return null;
+  const sev = maxSeverity(detections);
+  if (!sev) return null;
   return (
-    <div className="absolute bottom-4 left-4 right-4 max-w-lg bg-[#161b22]/95 backdrop-blur border border-[#30363d] rounded-lg p-3 text-[11px] z-20">
-      <div className="text-[13px] font-semibold text-white mb-2">{node.label}</div>
+    <div className="mt-3 pt-2 border-t border-[#30363d]">
+      <span className="text-[#58a6ff] text-[11px] font-semibold">Detections</span>
+      <div className="space-y-1 mt-1">
+        {detections.map((d) => {
+          const c = SEVERITY_COLORS[d.severity];
+          return (
+            <div key={d.ruleId} className="flex items-center gap-2">
+              <span className={`text-[9px] font-semibold px-1 py-0.5 rounded ${c.text} ${c.bg}`}>
+                {SEVERITY_LABELS[d.severity]}
+              </span>
+              <span className="text-[11px] text-gray-200 truncate">{d.ruleName}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function NodeDetail({ node, detections }: { node: AggregatedNode; detections?: Detection[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="absolute bottom-4 left-4 right-4 max-w-xl bg-[#161b22]/95 backdrop-blur border border-[#30363d] rounded-lg p-4 text-[12px] z-20 max-h-[50%] overflow-y-auto">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[14px] font-semibold text-white">
+          {node.label}
+          <span className="ml-2 text-[11px] font-normal text-gray-300">
+            {node.count} instance{node.count !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+          node.type === 'process' ? 'bg-[#58a6ff]/20 text-[#79c0ff]' :
+          node.type === 'network' ? 'bg-[#3fb950]/20 text-[#56d364]' :
+          'bg-[#f0883e]/20 text-[#f0a050]'
+        }`}>
+          {node.type}
+        </span>
+      </div>
+
       {node.type === 'process' && (
-        <div className="space-y-1 text-gray-300">
-          {node.fullPath && <div><span className="text-gray-500">Path:</span> <span className="font-mono">{node.fullPath}</span></div>}
-          {node.commandLine && <div><span className="text-gray-500">CmdLine:</span> <span className="font-mono">{node.commandLine}</span></div>}
-          {node.user && <div><span className="text-gray-500">User:</span> {node.user}</div>}
-          {node.integrityLevel && (
+        <div className="space-y-2">
+          {node.users.length > 0 && (
             <div>
-              <span className="text-gray-500">Integrity:</span>{' '}
-              <span className={INTEGRITY_COLORS[node.integrityLevel] ?? 'text-gray-300'}>{node.integrityLevel}</span>
+              <span className="text-[#58a6ff] text-[11px] font-semibold">Users</span>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {node.users.map((u) => (
+                  <span key={u} className="text-white font-mono text-[11px] bg-gray-800 px-1.5 py-0.5 rounded">{u}</span>
+                ))}
+              </div>
             </div>
           )}
-          {node.hashes && <div className="font-mono text-[10px] text-gray-400 break-all">{node.hashes}</div>}
+          {node.integrityLevels.length > 0 && (
+            <div>
+              <span className="text-[#58a6ff] text-[11px] font-semibold">Integrity Levels</span>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {node.integrityLevels.map((lvl) => (
+                  <span key={lvl} className={`text-[11px] font-semibold ${INTEGRITY_COLORS[lvl] ?? 'text-gray-200'}`}>{lvl}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {node.fullPaths.length > 0 && (
+            <div>
+              <span className="text-[#58a6ff] text-[11px] font-semibold">Paths</span>
+              {node.fullPaths.slice(0, expanded ? undefined : 3).map((p) => (
+                <div key={p} className="font-mono text-[11px] text-gray-200 truncate mt-0.5">{p}</div>
+              ))}
+              {node.fullPaths.length > 3 && !expanded && (
+                <button onClick={() => setExpanded(true)} className="text-[#58a6ff] text-[10px] mt-1 hover:underline">
+                  +{node.fullPaths.length - 3} more
+                </button>
+              )}
+            </div>
+          )}
+          {node.commandLines.length > 0 && (
+            <div>
+              <span className="text-[#58a6ff] text-[11px] font-semibold">Command Lines</span>
+              {node.commandLines.slice(0, expanded ? undefined : 5).map((cmd, i) => (
+                <div key={i} className="font-mono text-[10px] text-gray-200 break-all mt-1 bg-gray-900/60 px-2 py-1 rounded">{cmd}</div>
+              ))}
+              {node.commandLines.length > 5 && !expanded && (
+                <button onClick={() => setExpanded(true)} className="text-[#58a6ff] text-[10px] mt-1 hover:underline">
+                  +{node.commandLines.length - 5} more
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
+
       {node.type === 'network' && (
-        <div className="space-y-1 text-gray-300">
-          <div><span className="text-gray-500">Destination:</span> <span className="font-mono">{node.destinationIp}:{node.destinationPort}</span></div>
-          {node.protocol && <div><span className="text-gray-500">Protocol:</span> {node.protocol}</div>}
+        <div className="space-y-2">
+          <div>
+            <span className="text-[#58a6ff] text-[11px] font-semibold">Destinations</span>
+            {node.destinations.slice(0, expanded ? undefined : 10).map((d) => (
+              <div key={d} className="font-mono text-[11px] text-white mt-0.5">{d}</div>
+            ))}
+            {node.destinations.length > 10 && !expanded && (
+              <button onClick={() => setExpanded(true)} className="text-[#58a6ff] text-[10px] mt-1 hover:underline">
+                +{node.destinations.length - 10} more
+              </button>
+            )}
+          </div>
+          {node.protocols.length > 0 && (
+            <div>
+              <span className="text-[#58a6ff] text-[11px] font-semibold">Protocols</span>
+              <span className="ml-2 text-white text-[11px]">{node.protocols.join(', ')}</span>
+            </div>
+          )}
         </div>
       )}
+
       {node.type === 'file' && (
-        <div className="space-y-1 text-gray-300">
-          <div><span className="text-gray-500">File:</span> <span className="font-mono">{node.targetFilename}</span></div>
+        <div className="space-y-2">
+          <div>
+            <span className="text-[#58a6ff] text-[11px] font-semibold">Files Created</span>
+            <span className="ml-2 text-gray-300 text-[11px]">({node.filePaths.length} unique)</span>
+            {node.filePaths.slice(0, expanded ? undefined : 8).map((f) => (
+              <div key={f} className="font-mono text-[10px] text-gray-200 truncate mt-0.5">{f}</div>
+            ))}
+            {node.filePaths.length > 8 && !expanded && (
+              <button onClick={() => setExpanded(true)} className="text-[#58a6ff] text-[10px] mt-1 hover:underline">
+                +{node.filePaths.length - 8} more
+              </button>
+            )}
+          </div>
         </div>
       )}
+
+      {detections && detections.length > 0 && <DetectionsSummary detections={detections} />}
     </div>
   );
 }
@@ -89,7 +214,9 @@ function NodeDetail({ node }: { node: ProcessNode }) {
 export default function ProcessTree({ visible }: { visible: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showFilters, setShowFilters] = useState(true);
-  const [filters, setFilters] = useState<SysmonFilters>(() => loadSysmonFilters() ?? DEFAULT_SYSMON_FILTERS);
+  const [hideSystem, setHideSystem] = useState(true);
+  const [, startTransition] = useTransition();
+  const [filters, setFilters] = useState<SysmonFilters>(() => GRAPH_DEFAULT_FILTERS);
   const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
 
   useEffect(() => { saveSysmonFilters(filters); }, [filters]);
@@ -133,6 +260,9 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     enabled: visible,
   });
 
+  /* ---- Severity integration ---- */
+  const sev = useSeverityIntegration(rawEvents, 'sysmon');
+
   /* ---- Available values ---- */
   const { availableMachines, availableProcesses, availableUsers } = useMemo(() => {
     if (!rawEvents) return { availableMachines: [], availableProcesses: [], availableUsers: [] };
@@ -156,7 +286,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     };
   }, [rawEvents]);
 
-  /* ---- Client-side filtering + tree build ---- */
+  /* ---- Client-side filtering + aggregated tree build ---- */
   const treeData = useMemo(() => {
     if (!rawEvents) return { nodes: [], edges: [] };
 
@@ -212,12 +342,32 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
       });
     }
 
-    return buildProcessTree(events);
-  }, [rawEvents, filters, availableProcesses, availableUsers]);
+    // Severity filter
+    events = sev.filterBySeverity(events, filters.minSeverity);
+
+    return buildAggregatedTree(events, hideSystem);
+  }, [rawEvents, filters, availableProcesses, availableUsers, hideSystem, sev]);
+
+  /* ---- Prepare graph data with display labels ---- */
+  const graphNodes = useMemo(() =>
+    treeData.nodes.map((n) => ({
+      ...n,
+      label: n.count > 1 ? `${n.label} (\u00d7${n.count})` : n.label,
+    })),
+    [treeData.nodes],
+  );
+
+  const graphEdges = useMemo(() =>
+    treeData.edges.map((e) => ({
+      ...e,
+      label: e.count > 1 ? `\u00d7${e.count}` : '',
+    })),
+    [treeData.edges],
+  );
 
   /* ---- Shared Cytoscape hook ---- */
   const { selected, fitToView, resetLayout } = useCytoscape(
-    containerRef, treeData.nodes, treeData.edges, visible, {
+    containerRef, graphNodes, graphEdges, visible, {
       styles: processTreeStyles,
       layout: processTreeLayout,
       minZoom: 0.15,
@@ -225,7 +375,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     },
   );
 
-  const selectedNode = selected ? selected.data as unknown as ProcessNode : null;
+  const selectedNode = selected ? selected.data as unknown as AggregatedNode : null;
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -234,11 +384,14 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
         <Legend />
         <div className="flex items-center gap-3">
           {treeData.nodes.length > 0 && (
-            <span className="text-[11px] text-gray-600">
+            <span className="text-[11px] text-gray-300">
               {treeData.nodes.length} nodes &middot; {treeData.edges.length} edges
             </span>
           )}
           <div className="flex gap-1.5">
+            <ToolbarButton onClick={() => startTransition(() => setHideSystem((v) => !v))} active={hideSystem}>
+              Hide System
+            </ToolbarButton>
             <ToolbarButton onClick={() => setShowFilters(!showFilters)} active={showFilters}>
               Filters
             </ToolbarButton>
@@ -259,7 +412,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
         >
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center z-10">
-              <div className="flex items-center gap-3 text-gray-500 text-sm">
+              <div className="flex items-center gap-3 text-gray-300 text-sm">
                 <div className="w-4 h-4 border-2 border-gray-600 border-t-gray-400 rounded-full animate-spin" />
                 Loading process tree...
               </div>
@@ -271,13 +424,28 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
             </div>
           )}
           {!isLoading && !error && treeData.nodes.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center text-gray-600 text-sm z-10">
+            <div className="absolute inset-0 flex items-center justify-center text-gray-300 text-sm z-10">
               No Sysmon events found. Make sure the Agent is collecting Sysmon events.
             </div>
           )}
 
           <div ref={containerRef} className="w-full h-full" />
-          {selectedNode && <NodeDetail node={selectedNode} />}
+          {selectedNode && (
+            <NodeDetail
+              node={selectedNode}
+              detections={(() => {
+                if (!selectedNode.eventIds) return [];
+                const seen = new Set<string>();
+                const result: Detection[] = [];
+                for (const eid of selectedNode.eventIds) {
+                  for (const d of sev.detections.byEventId.get(eid) ?? []) {
+                    if (!seen.has(d.ruleId)) { seen.add(d.ruleId); result.push(d); }
+                  }
+                }
+                return result;
+              })()}
+            />
+          )}
         </div>
 
         {/* Resize handle + Filter sidebar */}

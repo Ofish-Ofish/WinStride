@@ -26,7 +26,7 @@ export const processTreeStyles: CyStylesheet[] = [
     },
   },
 
-  // Process nodes — Medium integrity (default blue)
+  // Process nodes — default (Medium / no maxIntegrity) blue
   {
     selector: 'node[type = "process"]',
     style: {
@@ -37,14 +37,27 @@ export const processTreeStyles: CyStylesheet[] = [
       'background-gradient-stop-positions': '0% 50% 100%',
       'border-color': '#58a6ff',
       'border-opacity': 0.5,
-      width: 30,
-      height: 30,
+      width: 'mapData(count, 1, 50, 30, 60)',
+      height: 'mapData(count, 1, 50, 30, 60)',
+    },
+  },
+
+  // Process nodes — Medium integrity explicit (same blue)
+  {
+    selector: 'node[type = "process"][maxIntegrity = "Medium"]',
+    style: {
+      'background-color': '#1f6feb',
+      'background-fill': 'radial-gradient',
+      'background-gradient-stop-colors': '#79c0ff #3b82f6 #1a56db',
+      'background-gradient-stop-positions': '0% 50% 100%',
+      'border-color': '#58a6ff',
+      'border-opacity': 0.5,
     },
   },
 
   // Process nodes — High integrity (yellow)
   {
-    selector: 'node[type = "process"][integrityLevel = "High"]',
+    selector: 'node[type = "process"][maxIntegrity = "High"]',
     style: {
       'background-color': '#d29922',
       'background-fill': 'radial-gradient',
@@ -52,14 +65,12 @@ export const processTreeStyles: CyStylesheet[] = [
       'background-gradient-stop-positions': '0% 50% 100%',
       'border-color': '#fde68a',
       'border-opacity': 0.6,
-      width: 34,
-      height: 34,
     },
   },
 
   // Process nodes — System integrity (red)
   {
-    selector: 'node[type = "process"][integrityLevel = "System"]',
+    selector: 'node[type = "process"][maxIntegrity = "System"]',
     style: {
       'background-color': '#da3633',
       'background-fill': 'radial-gradient',
@@ -67,14 +78,12 @@ export const processTreeStyles: CyStylesheet[] = [
       'background-gradient-stop-positions': '0% 50% 100%',
       'border-color': '#f97583',
       'border-opacity': 0.6,
-      width: 34,
-      height: 34,
     },
   },
 
   // Process nodes — Low integrity (gray)
   {
-    selector: 'node[type = "process"][integrityLevel = "Low"]',
+    selector: 'node[type = "process"][maxIntegrity = "Low"]',
     style: {
       'background-color': '#484f58',
       'background-fill': 'radial-gradient',
@@ -82,8 +91,6 @@ export const processTreeStyles: CyStylesheet[] = [
       'background-gradient-stop-positions': '0% 50% 100%',
       'border-color': '#8b949e',
       'border-opacity': 0.5,
-      width: 26,
-      height: 26,
     },
   },
 
@@ -98,8 +105,8 @@ export const processTreeStyles: CyStylesheet[] = [
       'background-gradient-stop-positions': '0% 50% 100%',
       'border-color': '#3fb950',
       'border-opacity': 0.5,
-      width: 24,
-      height: 24,
+      width: 'mapData(count, 1, 50, 24, 44)',
+      height: 'mapData(count, 1, 50, 24, 44)',
       'font-size': '10px',
     },
   },
@@ -115,13 +122,30 @@ export const processTreeStyles: CyStylesheet[] = [
       'background-gradient-stop-positions': '0% 50% 100%',
       'border-color': '#f0883e',
       'border-opacity': 0.5,
-      width: 24,
-      height: 24,
+      width: 'mapData(count, 1, 50, 24, 44)',
+      height: 'mapData(count, 1, 50, 24, 44)',
       'font-size': '10px',
     },
   },
 
-  // Edges — spawned (parent→child)
+  // Base edge — shared label styling
+  {
+    selector: 'edge',
+    style: {
+      label: 'data(label)',
+      'font-size': '9px',
+      'font-family': 'Inter, system-ui, sans-serif',
+      color: '#e6edf3',
+      'text-outline-color': '#010409',
+      'text-outline-width': 2,
+      'text-outline-opacity': 1,
+      'text-rotation': 'autorotate',
+      'text-margin-y': -8,
+      'min-zoomed-font-size': 0,
+    },
+  },
+
+  // Edges — spawned (parent->child)
   {
     selector: 'edge[type = "spawned"]',
     style: {
@@ -130,14 +154,14 @@ export const processTreeStyles: CyStylesheet[] = [
       'target-arrow-shape': 'triangle',
       'arrow-scale': 0.6,
       'curve-style': 'bezier',
-      width: 2,
+      width: 'mapData(count, 1, 50, 1.5, 6)',
       opacity: 0.8,
       'transition-property': 'opacity, line-color',
       'transition-duration': 180,
     },
   },
 
-  // Edges — connected (process→network)
+  // Edges — connected (process->network)
   {
     selector: 'edge[type = "connected"]',
     style: {
@@ -148,14 +172,14 @@ export const processTreeStyles: CyStylesheet[] = [
       'curve-style': 'bezier',
       'line-style': 'dashed',
       'line-dash-pattern': [6, 3],
-      width: 1.5,
+      width: 'mapData(count, 1, 50, 1, 4)',
       opacity: 0.7,
       'transition-property': 'opacity, line-color',
       'transition-duration': 180,
     },
   },
 
-  // Edges — created (process→file)
+  // Edges — created (process->file)
   {
     selector: 'edge[type = "created"]',
     style: {
@@ -166,7 +190,7 @@ export const processTreeStyles: CyStylesheet[] = [
       'curve-style': 'bezier',
       'line-style': 'dashed',
       'line-dash-pattern': [4, 4],
-      width: 1.5,
+      width: 'mapData(count, 1, 50, 1, 4)',
       opacity: 0.7,
       'transition-property': 'opacity, line-color',
       'transition-duration': 180,
@@ -244,9 +268,14 @@ export const processTreeStyles: CyStylesheet[] = [
 ];
 
 export const processTreeLayout = {
-  name: 'breadthfirst',
-  directed: true,
-  spacingFactor: 1.5,
+  name: 'cose',
   animate: false,
+  fit: true,
   padding: 30,
+  nodeRepulsion: 8000,
+  idealEdgeLength: 80,
+  edgeElasticity: 100,
+  gravity: 0.25,
+  numIter: 500,
+  nodeDimensionsIncludeLabels: true,
 };
