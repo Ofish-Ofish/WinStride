@@ -12,6 +12,8 @@ export interface ColumnDef {
   flex: number;
   minWidth: number;
   getValue: (event: WinEvent) => string | number;
+  /** Additional field names for search (e.g. 'host' as alias for 'machine' column) */
+  searchKeys?: string[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -25,14 +27,15 @@ export function sortEvents(
   columns: ColumnDef[],
   key: string,
   dir: SortDir,
+  getSortValue?: (columnKey: string, event: WinEvent) => string | number | undefined,
 ): WinEvent[] {
   if (!dir) return events;
   const col = columns.find((c) => c.key === key);
   if (!col) return events;
 
   const sorted = [...events].sort((a, b) => {
-    const va = col.getValue(a);
-    const vb = col.getValue(b);
+    const va = getSortValue?.(key, a) ?? col.getValue(a);
+    const vb = getSortValue?.(key, b) ?? col.getValue(b);
     if (typeof va === 'number' && typeof vb === 'number') return va - vb;
     return String(va).localeCompare(String(vb));
   });
@@ -64,6 +67,65 @@ export function relativeTime(iso: string): string {
   const d = new Date(iso);
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${months[d.getMonth()]} ${d.getDate()}`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Search — column-driven field:value + plain text search             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Filter events using search terms.  Supports:
+ *  - Plain text:     `admin`            → substring match on all column values + extras
+ *  - Field queries:  `user:admin`       → match on column key (or searchKeys alias)
+ *  - Quoted values:  `user:"john doe"`
+ *  - Multiple terms: `user:admin ip:192.168`  → all must match (AND)
+ *
+ * Field names are derived automatically from `columns[].key` + `columns[].searchKeys`.
+ * Pass `getExtraFields` for fields not in columns (e.g. domain, subject, risk).
+ */
+export function applySearch(
+  events: WinEvent[],
+  search: string,
+  columns: ColumnDef[],
+  getExtraFields?: (event: WinEvent) => Record<string, string>,
+): WinEvent[] {
+  if (!search) return events;
+  const terms = search.match(/(?:[^\s"]+|"[^"]*")+/g);
+  if (!terms || terms.length === 0) return events;
+
+  return events.filter((event) => {
+    // Build field map from columns
+    const fields: Record<string, string> = {};
+    const textParts: string[] = [];
+    for (const col of columns) {
+      const val = String(col.getValue(event) ?? '');
+      fields[col.key] = val;
+      if (col.searchKeys) {
+        for (const alias of col.searchKeys) fields[alias] = val;
+      }
+      textParts.push(val);
+    }
+    // Merge extra fields (non-column data + risk)
+    if (getExtraFields) {
+      const extras = getExtraFields(event);
+      for (const [k, v] of Object.entries(extras)) {
+        fields[k] = v;
+        textParts.push(v);
+      }
+    }
+    const text = textParts.join(' ').toLowerCase();
+
+    return terms.every((term) => {
+      const colonIdx = term.indexOf(':');
+      if (colonIdx > 0) {
+        const field = term.slice(0, colonIdx).toLowerCase();
+        const value = term.slice(colonIdx + 1).toLowerCase().replace(/^"|"$/g, '');
+        const fieldValue = fields[field];
+        if (fieldValue !== undefined) return fieldValue.toLowerCase().includes(value);
+      }
+      return text.includes(term.toLowerCase().replace(/^"|"$/g, ''));
+    });
+  });
 }
 
 /* ------------------------------------------------------------------ */

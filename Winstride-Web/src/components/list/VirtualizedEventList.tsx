@@ -163,6 +163,9 @@ export interface VirtualizedEventListProps {
 
   /** JSON export mapper function */
   jsonMapper: (event: WinEvent) => Record<string, unknown>;
+
+  /** Optional override for sort values — return undefined to fall back to col.getValue */
+  getSortValue?: (columnKey: string, event: WinEvent) => string | number | undefined;
 }
 
 /* ------------------------------------------------------------------ */
@@ -205,6 +208,7 @@ export default function VirtualizedEventList({
   search,
   onSearchChange,
   jsonMapper,
+  getSortValue,
 }: VirtualizedEventListProps) {
   /* ---- List state ---- */
   const [sortKey, setSortKey] = useState<string>('time');
@@ -253,8 +257,8 @@ export default function VirtualizedEventList({
 
   /* ---- Sort ---- */
   const sortedEvents = useMemo(
-    () => sortEvents(filteredEvents, columns, sortKey, sortDir),
-    [filteredEvents, columns, sortKey, sortDir],
+    () => sortEvents(filteredEvents, columns, sortKey, sortDir, getSortValue),
+    [filteredEvents, columns, sortKey, sortDir, getSortValue],
   );
 
   const handleSort = useCallback((key: string) => {

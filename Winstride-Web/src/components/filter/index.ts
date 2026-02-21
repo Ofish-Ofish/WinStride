@@ -8,3 +8,4 @@ export { default as DualRangeTrack } from './DualRangeTrack';
 export { default as ToggleSwitch } from './ToggleSwitch';
 export { default as TimeDualSlider } from './TimeDualSlider';
 export { default as SearchableFilterList } from './SearchableFilterList';
+export { default as SeverityFilter } from './SeverityFilter';
