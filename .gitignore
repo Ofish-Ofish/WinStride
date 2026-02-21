@@ -33,3 +33,11 @@ msbuild.wrn
 
 # Visual Studio 2015
 .vs/
+
+# Documentation and scripts (generated)
+docs/
+scripts/
+Winstride-Web/docs/
+
+# Screenshots
+*.png

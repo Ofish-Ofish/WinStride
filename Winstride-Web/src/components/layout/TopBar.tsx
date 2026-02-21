@@ -5,9 +5,17 @@ interface TopBarProps {
   currentModule: string;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
+  availableViews: ViewMode[];
 }
 
-export default function TopBar({ onToggleSidebar, currentModule, viewMode, onViewModeChange }: TopBarProps) {
+const VIEW_LABELS: Record<ViewMode, string> = {
+  dashboard: 'Dashboard',
+  list: 'List View',
+  graph: 'Graph View',
+  timeline: 'Timeline',
+};
+
+export default function TopBar({ onToggleSidebar, currentModule, viewMode, onViewModeChange, availableViews }: TopBarProps) {
   return (
     <header className="h-14 bg-gray-900 border-b border-gray-700 flex items-center px-4 gap-4">
       <button
@@ -22,26 +30,19 @@ export default function TopBar({ onToggleSidebar, currentModule, viewMode, onVie
       <span className="text-gray-400 text-sm">/ {currentModule}</span>
 
       <div className="ml-auto flex bg-gray-800 rounded-lg p-0.5 border border-gray-700">
-        <button
-          onClick={() => onViewModeChange('list')}
-          className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
-            viewMode === 'list'
-              ? 'bg-gray-600 text-white'
-              : 'text-gray-400 hover:text-gray-200'
-          }`}
-        >
-          List View
-        </button>
-        <button
-          onClick={() => onViewModeChange('graph')}
-          className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
-            viewMode === 'graph'
-              ? 'bg-gray-600 text-white'
-              : 'text-gray-400 hover:text-gray-200'
-          }`}
-        >
-          Graph View
-        </button>
+        {availableViews.map((mode) => (
+          <button
+            key={mode}
+            onClick={() => onViewModeChange(mode)}
+            className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+              viewMode === mode
+                ? 'bg-gray-600 text-white'
+                : 'text-gray-300 hover:text-white'
+            }`}
+          >
+            {VIEW_LABELS[mode]}
+          </button>
+        ))}
       </div>
     </header>
   );
