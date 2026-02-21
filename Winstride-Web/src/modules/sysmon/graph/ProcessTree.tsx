@@ -261,7 +261,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
   });
 
   /* ---- Severity integration ---- */
-  const sev = useSeverityIntegration(rawEvents, 'sysmon');
+  const { detections: sevDetections, filterBySeverity } = useSeverityIntegration(rawEvents, 'sysmon');
 
   /* ---- Available values ---- */
   const { availableMachines, availableProcesses, availableUsers } = useMemo(() => {
@@ -343,10 +343,10 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     }
 
     // Severity filter
-    events = sev.filterBySeverity(events, filters.minSeverity);
+    events = filterBySeverity(events, filters.minSeverity);
 
     return buildAggregatedTree(events, hideSystem);
-  }, [rawEvents, filters, availableProcesses, availableUsers, hideSystem, sev]);
+  }, [rawEvents, filters, availableProcesses, availableUsers, hideSystem, filterBySeverity]);
 
   /* ---- Prepare graph data with display labels ---- */
   const graphNodes = useMemo(() =>
@@ -438,7 +438,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
                 const seen = new Set<string>();
                 const result: Detection[] = [];
                 for (const eid of selectedNode.eventIds) {
-                  for (const d of sev.detections.byEventId.get(eid) ?? []) {
+                  for (const d of sevDetections.byEventId.get(eid) ?? []) {
                     if (!seen.has(d.ruleId)) { seen.add(d.ruleId); result.push(d); }
                   }
                 }

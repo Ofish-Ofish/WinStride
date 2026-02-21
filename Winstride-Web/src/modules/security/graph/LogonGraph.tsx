@@ -173,13 +173,13 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     refetchInterval: 30000,
   });
 
-  const sev = useSeverityIntegration(events, 'security');
+  const { detections: sevDetections, filterBySeverity } = useSeverityIntegration(events, 'security');
 
   // Step 0: apply severity filter to raw events before graph aggregation
   const filteredByRisk = useMemo(() => {
     if (!events) return [];
-    return sev.filterBySeverity(events, filters.minSeverity);
-  }, [events, sev, filters.minSeverity]);
+    return filterBySeverity(events, filters.minSeverity);
+  }, [events, filterBySeverity, filters.minSeverity]);
 
   // Step 1: transform raw events into nodes & edges
   const fullGraph = useMemo(() => {
@@ -398,7 +398,7 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
         )}
 
         <div ref={containerRef} className="w-full h-full" />
-        {selected && <NodeDetailPanel selected={selected} detections={sev.detections} />}
+        {selected && <NodeDetailPanel selected={selected} detections={sevDetections} />}
       </div>
 
         {/* Resize handle + Filter sidebar (right) */}
