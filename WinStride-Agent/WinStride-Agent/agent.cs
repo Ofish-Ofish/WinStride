@@ -10,6 +10,7 @@ using WinStrideApi.Models;
 using Newtonsoft.Json;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using System.Linq;
 
 class Agent
 {
@@ -17,18 +18,24 @@ class Agent
 
     static async Task Main()
     {
-        AppConfig fullConfig = LoadConfig("config.yaml");
+        string projectRoot = GetSourceDirectory();
+        string configPath = Path.Combine(projectRoot, "config.yaml");
+        AppConfig fullConfig = LoadConfig(configPath);
+
         if (string.IsNullOrWhiteSpace(fullConfig.Global.BaseUrl))
         {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("[CRITICAL ERROR] 'global.baseUrl' is missing in config.yaml.");
-            Console.WriteLine("The agent cannot start without a target API destination.");
-            Console.ResetColor();
+            Logger.WriteLine("[CRITICAL ERROR] 'global.baseUrl' is missing in config.yaml.");
+            Logger.WriteLine("The agent cannot start without a target API destination.");
             return;
         }
 
         string BaseUrl = fullConfig.Global.BaseUrl;
         int batchSize = fullConfig.Global.BatchSize;
+        Logger.MaxLogSizeMb = fullConfig.Global.MaxLogSizeMb;
+
+        Logger.WriteLine("================================================================");
+        Logger.WriteLine("                    WinStride Agent Started                     ");
+        Logger.WriteLine("================================================================");
 
         _ = StartHeartbeatLoop(BaseUrl, fullConfig.Global.HeartbeatInterval);
 
@@ -46,24 +53,23 @@ class Agent
             }
             catch (EventLogNotFoundException)
             {
-                Console.WriteLine($"[Warning] Log path '{logEntry.Key}' not found. Skipping.");
+                Logger.WriteLine($"[Warning] Log path '{logEntry.Key}' not found. Skipping.");
             }
             catch (UnauthorizedAccessException)
             {
-                Console.WriteLine($"[Error] Access Denied for '{logEntry.Key}'. Please run as Administrator.");
+                Logger.WriteLine($"[Error] Access Denied for '{logEntry.Key}'. Please run as Administrator.");
             }
         }
 
         if (monitorTasks.Count == 0)
         {
-            Console.WriteLine("No valid logs to monitor. Press [Enter] to exit.");
-            Console.ReadLine();
+            Logger.WriteLine("No valid logs to monitor. Exiting.");
             return;
         }
 
         await Task.WhenAll(monitorTasks);
-        Console.WriteLine("\nAll monitors are active. Press [Enter] to terminate the agent.");
-        Console.ReadLine();
+        Logger.WriteLine("All monitors are active.");
+        await Task.Delay(-1);
     }
     private static AppConfig LoadConfig(string filePath)
     {
@@ -84,9 +90,10 @@ class Agent
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Error] Failed to parse YAML: {ex.Message}");
+            Logger.WriteLine($"[Error] Failed to parse YAML: {ex.Message}");
             return new AppConfig();
         }
+
     }
 
     private static async Task StartHeartbeatLoop(string baseUrl, int intervalSeconds)
@@ -117,16 +124,29 @@ class Agent
                 if (!response.IsSuccessStatusCode)
                 {
                     string error = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"[Heartbeat] Warning: {response.StatusCode} - {error}");
+                    Logger.WriteLine($"[Heartbeat] Warning: {response.StatusCode} - {error}");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Heartbeat] Network failure: {ex.Message}");
+                Logger.WriteLine($"[Heartbeat] Network failure: {ex.Message}");
             }
 
             await Task.Delay(TimeSpan.FromSeconds(intervalSeconds));
         }
+    }
+
+    private static string GetSourceDirectory([System.Runtime.CompilerServices.CallerFilePath] string sourceFilePath = "")
+    {
+        return System.IO.Path.GetDirectoryName(sourceFilePath) ?? string.Empty;
+    }
+
+    private static string GetConfigPath()
+    {
+        string appDir = AppDomain.CurrentDomain.BaseDirectory;
+        string productionPath = Path.Combine(appDir, "config.yaml");
+        if (File.Exists(productionPath)) return productionPath;
+        return Path.Combine(GetSourceDirectory(), "config.yaml");
     }
 }
 
@@ -189,7 +209,7 @@ public class LogMonitor
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[{_logName}] Critical error in live watcher: {ex.Message}");
+            Logger.WriteLine($"[{_logName}] Critical error in live watcher: {ex.Message}");
         }
     }
     private async Task<bool> PostBatchToApi(List<WinEvent> data)
@@ -213,18 +233,18 @@ public class LogMonitor
 
             if (response.IsSuccessStatusCode)
             {
-                Console.WriteLine($"[{_logName}] Uploaded {data.Count} logs.");
+                Logger.WriteLine($"[{_logName}] Uploaded {data.Count} logs.");
                 return true;
             }
 
             string errorBody = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"[{_logName}] Error: {response.StatusCode} - {errorBody}");
+            Logger.WriteLine($"[{_logName}] Error: {response.StatusCode} - {errorBody}");
 
             return false;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[{_logName}] Network failure: {ex.Message}");
+            Logger.WriteLine($"[{_logName}] Network failure: {ex.Message}");
             return false;
         }
     }
@@ -240,13 +260,13 @@ public class LogMonitor
     {
         try
         {
-            Console.WriteLine("Checking API health...");
+            Logger.WriteLine("Checking API health...");
             HttpResponseMessage response = await _client.GetAsync($"{_baseUrl}/health");
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Connection failed: {ex.Message}");
+            Logger.WriteLine($"Connection failed: {ex.Message}");
             return false;
         }
     }
@@ -263,7 +283,7 @@ public class LogMonitor
             _watcher = null;
         }
 
-        Console.WriteLine($"Connection lost. Watcher stopped. Entering Recovery Mode");
+        Logger.WriteLine($"Connection lost. Watcher stopped. Entering Recovery Mode");
 
         while (_isRecovering)
         {
@@ -274,7 +294,7 @@ public class LogMonitor
             }
         }
 
-        Console.WriteLine($"Resuming operations");
+        Logger.WriteLine($"Resuming operations");
         await StartAsync();
     }
 
@@ -358,9 +378,7 @@ public class LogMonitor
         }
         catch (EventLogNotFoundException)
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"[{_logName}] Warning: Log not found on this system. Skipping.");
-            Console.ResetColor();
+            Logger.WriteLine($"[{_logName}] Warning: Log not found on this system. Skipping.");
         }
     }
 
@@ -376,11 +394,11 @@ public class LogMonitor
             _watcher.EventRecordWritten += OnEventWritten;
 
             _watcher.Enabled = true;
-            Console.WriteLine($"[{_logName}] Live watcher enabled.");
+            Logger.WriteLine($"[{_logName}] Live watcher enabled.");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[{_logName}] Failed to start watcher: {ex.Message}");
+            Logger.WriteLine($"[{_logName}] Failed to start watcher: {ex.Message}");
             _ = StopAndRecover();
         }
     }
@@ -408,7 +426,7 @@ public class LogMonitor
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[{_logName}] Error fetching last log: {ex.Message}");
+            Logger.WriteLine($"[{_logName}] Error fetching last log: {ex.Message}");
         }
         return null;
     }
@@ -452,8 +470,9 @@ public class GlobalSettings
 {
     public string? BaseUrl { get; set; } = null;
     public int BatchSize { get; set; } = 100;
-
     public int HeartbeatInterval { get; set; } = 60;
+
+    public int MaxLogSizeMb { get; set; } = 5;
 }
 
 public class ODataResponse<T>
@@ -467,4 +486,76 @@ public class Heartbeat
     public string MachineName { get; set; } = string.Empty;
     public bool IsAlive { get; set; }
     public DateTime LastSeen { get; set; }
+}
+
+public static class Logger
+{
+    private static readonly string _logFile = DetermineLogPath();
+    private static readonly object _lock = new object();
+    public static int MaxLogSizeMb { get; set; }
+    public static void WriteLine(string message)
+    {
+        string logLine = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}";
+        Console.WriteLine(logLine);
+
+        lock (_lock)
+        {
+            try
+            {
+                using (var stream = new FileStream(_logFile, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
+                using (var writer = new StreamWriter(stream))
+                {
+                    writer.AutoFlush = true;
+                    writer.WriteLine(logLine);
+                }
+
+                if (MaxLogSizeMb > 0) ManageLogSize();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CRITICAL] Logger failed: {ex.Message}");
+            }
+        }
+    }
+
+    private static void ManageLogSize()
+    {
+        try
+        {
+            var fileInfo = new System.IO.FileInfo(_logFile);
+            if (!fileInfo.Exists) return;
+
+            long maxByteSize = MaxLogSizeMb * 1024L * 1024L;
+
+            if (fileInfo.Length > maxByteSize)
+            {
+                var allLines = System.IO.File.ReadAllLines(_logFile);
+                if (allLines.Length > 10) 
+                {
+                    var newLines = allLines.Skip(allLines.Length / 2);
+                    System.IO.File.WriteAllLines(_logFile, newLines);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Internal Logger Error] Size management failed: {ex.Message}");
+        }
+    }
+
+    private static string DetermineLogPath()
+    {
+        string appDir = AppDomain.CurrentDomain.BaseDirectory;
+
+        bool isDevelopment = appDir.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}");
+
+        if (isDevelopment)
+        {
+            return Path.Combine(GetSourcePath(), "agent_logs.txt");
+        }
+
+        return Path.Combine(appDir, "agent_logs.txt");
+    }
+    private static string GetSourcePath([System.Runtime.CompilerServices.CallerFilePath] string path = "")
+        => Path.GetDirectoryName(path) ?? string.Empty;
 }

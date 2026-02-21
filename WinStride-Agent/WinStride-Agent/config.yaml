@@ -2,6 +2,7 @@ global:
   baseUrl: "http://localhost:5090/api/Event"
   batchSize: 100
   heartbeatInterval: 60
+  maxLogSizeMb: 5
 
 logs:
   Security:
