@@ -9,6 +9,16 @@ import { parseScriptBlock, parseCommandExecution } from '../shared/parsePSEvent'
 
 export const COLUMNS: ColumnDef[] = [
   {
+    key: 'severity',
+    label: 'Risk',
+    defaultVisible: true,
+    sortable: true,
+    flex: 0.7,
+    minWidth: 60,
+    getValue: (e) => e.id,
+    searchKeys: ['risk'],
+  },
+  {
     key: 'eventId',
     label: 'Event ID',
     defaultVisible: true,
@@ -16,15 +26,7 @@ export const COLUMNS: ColumnDef[] = [
     flex: 1.5,
     minWidth: 160,
     getValue: (e) => e.eventId,
-  },
-  {
-    key: 'level',
-    label: 'Level',
-    defaultVisible: true,
-    sortable: true,
-    flex: 1,
-    minWidth: 100,
-    getValue: (e) => e.level ?? '',
+    searchKeys: ['event', 'id'],
   },
   {
     key: 'command',
@@ -41,6 +43,7 @@ export const COLUMNS: ColumnDef[] = [
       const cmd = parseCommandExecution(e);
       return cmd?.commandName ?? '';
     },
+    searchKeys: ['script', 'cmd', 'code'],
   },
   {
     key: 'path',
@@ -66,6 +69,7 @@ export const COLUMNS: ColumnDef[] = [
     flex: 1.5,
     minWidth: 110,
     getValue: (e) => e.machineName,
+    searchKeys: ['host'],
   },
   {
     key: 'time',

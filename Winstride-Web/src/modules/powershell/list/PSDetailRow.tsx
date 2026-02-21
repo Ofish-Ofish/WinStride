@@ -1,4 +1,6 @@
 import type { WinEvent } from '../../security/shared/types';
+import type { Detection } from '../../../shared/detection/rules';
+import { SEVERITY_COLORS } from '../../../shared/detection/engine';
 import { parseScriptBlock, parseCommandExecution, findSuspiciousKeywords } from '../shared/parsePSEvent';
 import { Row, SectionLabel, RawDataToggle } from '../../../components/list/DetailPrimitives';
 
@@ -33,7 +35,7 @@ function HighlightedScript({ text }: { text: string }) {
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export default function PSDetailRow({ event }: { event: WinEvent }) {
+export default function PSDetailRow({ event, detections }: { event: WinEvent; detections?: Detection[] }) {
   if (event.eventId === 4104) {
     const sb = parseScriptBlock(event);
     if (!sb) {
@@ -48,6 +50,19 @@ export default function PSDetailRow({ event }: { event: WinEvent }) {
       <div className="mx-4 my-2 bg-[#0d1117] border border-[#21262d] rounded-lg overflow-hidden">
         <div className={`h-0.5 ${sb.isSuspicious ? 'bg-[#f85149]' : 'bg-[#1f6feb]'}`} />
         <div className="p-4">
+          {detections && detections.length > 0 && (
+            <div className="mb-3 space-y-1.5">
+              <div className="text-[11px] font-semibold text-[#ff7b72]">Detections</div>
+              {detections.map((d) => (
+                <div key={d.ruleId} className={`text-[11px] px-2 py-1 rounded border ${SEVERITY_COLORS[d.severity].bg} ${SEVERITY_COLORS[d.severity].border}`}>
+                  <span className={`font-semibold ${SEVERITY_COLORS[d.severity].text}`}>[{d.ruleId}]</span>
+                  <span className="text-white ml-1.5">{d.ruleName}</span>
+                  {d.mitre && <span className="text-gray-300 ml-1.5">({d.mitre})</span>}
+                  <div className="text-gray-300 mt-0.5">{d.description}</div>
+                </div>
+              ))}
+            </div>
+          )}
           {/* Info bar */}
           <div className="flex flex-wrap items-center gap-3 mb-3 text-[11px] text-gray-400">
             {sb.scriptBlockId && (
@@ -105,32 +120,47 @@ export default function PSDetailRow({ event }: { event: WinEvent }) {
     return (
       <div className="mx-4 my-2 bg-[#0d1117] border border-[#21262d] rounded-lg overflow-hidden">
         <div className={`h-0.5 ${suspiciousMatches.length > 0 ? 'bg-[#f0883e]' : 'bg-[#1f6feb]'}`} />
-        <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0">
-          <div>
-            <SectionLabel>Command Info</SectionLabel>
-            <Row label="Command Name" value={cmd.commandName} />
-            <Row label="Command Type" value={cmd.commandType} />
-            <Row label="Script Name" value={cmd.scriptName} />
-            <Row label="User" value={cmd.user} />
-            <Row label="Host Application" value={cmd.hostApplication} />
-          </div>
+        <div className="p-4">
+          {detections && detections.length > 0 && (
+            <div className="mb-3 space-y-1.5">
+              <div className="text-[11px] font-semibold text-[#ff7b72]">Detections</div>
+              {detections.map((d) => (
+                <div key={d.ruleId} className={`text-[11px] px-2 py-1 rounded border ${SEVERITY_COLORS[d.severity].bg} ${SEVERITY_COLORS[d.severity].border}`}>
+                  <span className={`font-semibold ${SEVERITY_COLORS[d.severity].text}`}>[{d.ruleId}]</span>
+                  <span className="text-white ml-1.5">{d.ruleName}</span>
+                  {d.mitre && <span className="text-gray-300 ml-1.5">({d.mitre})</span>}
+                  <div className="text-gray-300 mt-0.5">{d.description}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0">
+            <div>
+              <SectionLabel>Command Info</SectionLabel>
+              <Row label="Command Name" value={cmd.commandName} />
+              <Row label="Command Type" value={cmd.commandType} />
+              <Row label="Script Name" value={cmd.scriptName} />
+              <Row label="User" value={cmd.user} />
+              <Row label="Host Application" value={cmd.hostApplication} />
+            </div>
 
-          <div>
-            {cmd.payload && (
-              <>
-                <SectionLabel>Payload</SectionLabel>
-                <pre className="mt-1 p-3 bg-[#161b22] border border-[#21262d] rounded text-[11px] text-gray-200 font-mono overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
-                  {cmd.payload}
-                </pre>
-              </>
-            )}
-            {suspiciousMatches.length > 0 && (
-              <div className="mt-3 px-3 py-2 rounded bg-[#f85149]/10 border border-[#f85149]/20">
-                <span className="text-[11px] text-[#f85149] font-medium">
-                  Suspicious keywords: {suspiciousMatches.join(', ')}
-                </span>
-              </div>
-            )}
+            <div>
+              {cmd.payload && (
+                <>
+                  <SectionLabel>Payload</SectionLabel>
+                  <pre className="mt-1 p-3 bg-[#161b22] border border-[#21262d] rounded text-[11px] text-gray-200 font-mono overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
+                    {cmd.payload}
+                  </pre>
+                </>
+              )}
+              {suspiciousMatches.length > 0 && (
+                <div className="mt-3 px-3 py-2 rounded bg-[#f85149]/10 border border-[#f85149]/20">
+                  <span className="text-[11px] text-[#f85149] font-medium">
+                    Suspicious keywords: {suspiciousMatches.join(', ')}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

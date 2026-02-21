@@ -8,9 +8,11 @@ import { PS_EVENT_LABELS } from '../shared/eventMeta';
 import { parseScriptBlock, parseCommandExecution } from '../shared/parsePSEvent';
 import PSFilterPanel from '../PSFilterPanel';
 import PSDetailRow from './PSDetailRow';
+import { useSeverityIntegration } from '../../../shared/detection/engine';
+import { renderSeverityCell } from '../../../shared/detection/SeverityBadge';
 import type { WinEvent } from '../../security/shared/types';
 import type { ColumnDef } from '../../../shared/listUtils';
-import { relativeTime } from '../../../shared/listUtils';
+import { relativeTime, applySearch } from '../../../shared/listUtils';
 import VirtualizedEventList from '../../../components/list/VirtualizedEventList';
 import { COLUMNS, psJsonMapper } from './psColumns';
 
@@ -69,6 +71,19 @@ function renderCell(col: ColumnDef, event: WinEvent): React.ReactNode | null {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Extra search fields (fields not in column definitions)             */
+/* ------------------------------------------------------------------ */
+
+function getExtraSearchFields(e: WinEvent, severityLabel: string): Record<string, string> {
+  const cmd = parseCommandExecution(e);
+  return {
+    risk: severityLabel, severity: severityLabel,
+    level: e.level ?? '',
+    payload: cmd?.payload ?? '',
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -103,6 +118,8 @@ export default function PSEventList({ visible }: { visible: boolean }) {
     enabled: visible,
   });
 
+  const sev = useSeverityIntegration(rawEvents, 'powershell');
+
   /* ---- Available values for filter panel ---- */
   const availableMachines = useMemo(() => {
     if (!rawEvents) return [];
@@ -136,31 +153,22 @@ export default function PSEventList({ visible }: { visible: boolean }) {
       events = events.filter((e) => e.level === 'Warning');
     }
 
-    // Search
-    if (debouncedSearch) {
-      const lowerSearch = debouncedSearch.toLowerCase();
-      events = events.filter((e) => {
-        const sb = parseScriptBlock(e);
-        const cmd = parseCommandExecution(e);
-        const searchable = [
-          String(e.eventId),
-          PS_EVENT_LABELS[e.eventId] ?? '',
-          e.level ?? '',
-          e.machineName,
-          sb?.scriptBlockText ?? '',
-          sb?.path ?? '',
-          cmd?.commandName ?? '',
-          cmd?.scriptName ?? '',
-          cmd?.payload ?? '',
-        ].join(' ').toLowerCase();
-        return searchable.includes(lowerSearch);
-      });
-    }
+    // Search — column-driven field:value + plain text
+    events = applySearch(events, debouncedSearch, COLUMNS, (e) => {
+      const sevInfo = sev.getEventSeverity(e);
+      return getExtraSearchFields(e, sevInfo ? sevInfo.severity : '');
+    });
 
     return events;
-  }, [rawEvents, filters, debouncedSearch]);
+  }, [rawEvents, filters, debouncedSearch, sev]);
 
   const toggleFilters = useCallback(() => setShowFilters((v) => !v), []);
+
+  /* ---- Severity filter ---- */
+  const severityFilteredEvents = useMemo(
+    () => sev.filterBySeverity(filteredEvents, filters.minSeverity),
+    [filteredEvents, sev, filters.minSeverity],
+  );
 
   /* ---- Render ---- */
   return (
@@ -170,13 +178,13 @@ export default function PSEventList({ visible }: { visible: boolean }) {
       error={!!error}
       columns={COLUMNS}
       columnsStorageKey="winstride:psColumns"
-      searchPlaceholder="Search scripts & commands..."
+      searchPlaceholder="Search... (command:Invoke path:temp level:Warning)"
       emptyMessage="No events found. Make sure the Agent is collecting PowerShell events."
       eventLabels={PS_EVENT_LABELS}
       eventIdColumnKey="eventId"
       exportPrefix="winstride-powershell"
-      renderCell={renderCell}
-      renderDetailRow={(event) => <PSDetailRow event={event} />}
+      renderCell={(col, event) => renderSeverityCell(col, event, sev) ?? renderCell(col, event)}
+      renderDetailRow={(event) => <PSDetailRow event={event} detections={sev.detections.byEventId.get(event.id)} />}
       renderFilterPanel={() => (
         <PSFilterPanel
           filters={filters}
@@ -186,11 +194,12 @@ export default function PSEventList({ visible }: { visible: boolean }) {
       )}
       showFilters={showFilters}
       onToggleFilters={toggleFilters}
-      filteredEvents={filteredEvents}
+      filteredEvents={severityFilteredEvents}
       rawCount={rawEvents?.length ?? 0}
       search={search}
       onSearchChange={setSearch}
       jsonMapper={psJsonMapper}
+      getSortValue={sev.getSortValue}
     />
   );
 }
