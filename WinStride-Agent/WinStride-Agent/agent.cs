@@ -67,7 +67,7 @@ class Agent
 
                 try
                 {
-                    LogMonitor monitor = new LogMonitor(logEntry.Key, logEntry.Value, client, BaseUrl, batchSize);
+                    LogMonitor monitor = new LogMonitor(logEntry.Key, logEntry.Value, client, BaseUrl, batchSize, fullConfig.Global.recoverdelayMs);
                     monitorTasks.Add(monitor.StartAsync());
                 }
                 catch (EventLogNotFoundException)
@@ -190,12 +190,13 @@ public class LogMonitor
     private readonly object _lock = new object();
     private DateTime _lastUploadTime = DateTime.Now;
     private readonly int _batchSize;
+    private readonly int _recoverDelayMs;
 
     private long _lastSeenRecordId = 0;
     private long? _pendingWatchdogRecordId = null;
     private bool _watchdogStarted = false;
 
-    public LogMonitor(string logName, LogConfig config, HttpClient client, string baseUrl, int batchSize)
+    public LogMonitor(string logName, LogConfig config, HttpClient client, string baseUrl, int batchSize, int recoverDelayMs)
     {
         _logName = logName;
         _config = config ?? new LogConfig();
@@ -203,6 +204,7 @@ public class LogMonitor
         _baseUrl = baseUrl;
         _machineName = Environment.MachineName;
         _batchSize = batchSize;
+        _recoverDelayMs = recoverDelayMs;
     }
 
     private void OnEventWritten(object? sender, EventRecordWrittenEventArgs e)
@@ -324,18 +326,22 @@ public class LogMonitor
             _watcher = null;
         }
 
-        Logger.WriteLine($"Connection lost. Watcher stopped. Entering Recovery Mode");
+        Logger.WriteLine($"[{_logName}] Connection lost. Watcher stopped. Entering Recovery Mode");
+
+        int backoffDelayMs = _recoverDelayMs;
+        int maxBackoffMs = backoffDelayMs * 10;
 
         while (_isRecovering)
         {
             _isRecovering = !(await ApiIsHealthy());
             if(_isRecovering)
             {
-                await Task.Delay(30000);
+                await Task.Delay(backoffDelayMs);
+                backoffDelayMs = Math.Min(backoffDelayMs * 2, maxBackoffMs);
             }
         }
 
-        Logger.WriteLine($"Resuming operations");
+        Logger.WriteLine($"[{_logName}] Resuming operations");
         await StartAsync();
     }
 
@@ -577,6 +583,8 @@ public class GlobalSettings
     public int HeartbeatInterval { get; set; } = 60;
 
     public int MaxLogSizeMb { get; set; } = 5;
+
+    public int recoverdelayMs { get; set; } = 30000;
 }
 
 public class ODataResponse<T>

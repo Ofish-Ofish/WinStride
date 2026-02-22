@@ -3,6 +3,7 @@ global:
   batchSize: 100
   heartbeatInterval: 60
   maxLogSizeMb: 5
+  recoverdelayMs: 30000
 
 logs:
   Security:
