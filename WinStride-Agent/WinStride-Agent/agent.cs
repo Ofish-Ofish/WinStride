@@ -33,6 +33,7 @@ class Agent
         int batchSize = fullConfig.Global.BatchSize;
         Logger.MaxLogSizeMb = fullConfig.Global.MaxLogSizeMb;
 
+        Logger.WriteLine("\n\n\n");
         Logger.WriteLine("================================================================");
         Logger.WriteLine("                    WinStride Agent Started                     ");
         Logger.WriteLine("================================================================");
@@ -165,6 +166,10 @@ public class LogMonitor
     private DateTime _lastUploadTime = DateTime.Now;
     private readonly int _batchSize;
 
+    private long _lastSeenRecordId = 0;
+    private long? _pendingWatchdogRecordId = null;
+    private bool _watchdogStarted = false;
+
     public LogMonitor(string logName, LogConfig config, HttpClient client, string baseUrl, int batchSize)
     {
         _logName = logName;
@@ -187,6 +192,11 @@ public class LogMonitor
 
                 lock (_lock)
                 {
+                    if (record.RecordId.HasValue && record.RecordId.Value > _lastSeenRecordId)
+                    {
+                        _lastSeenRecordId = record.RecordId.Value;
+                    }
+
                     _liveBuffer.Add(logData);
                     double secondsSinceLast = (DateTime.Now - _lastUploadTime).TotalSeconds;
 
@@ -254,6 +264,12 @@ public class LogMonitor
         WinEvent? lastSavedLog = await GetLastLogFromApi();
         await SyncBacklogAsync(lastSavedLog?.TimeCreated);
         StartLiveWatcher();
+
+        if (!_watchdogStarted)
+        {
+            _watchdogStarted = true;
+            _ = WatchdogLoop();
+        }
     }
 
     private async Task<bool> ApiIsHealthy()
@@ -296,6 +312,64 @@ public class LogMonitor
 
         Logger.WriteLine($"Resuming operations");
         await StartAsync();
+    }
+
+    private async Task WatchdogLoop()
+    {
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromMinutes(5));
+
+            if (_isRecovering || _watcher == null) continue;
+
+            try
+            {
+                string queryText = BuildXPathQuery(null);
+                EventLogQuery query = new EventLogQuery(_logName, PathType.LogName, queryText) { ReverseDirection = true };
+                
+                using (EventLogReader reader = new EventLogReader(query))
+                {
+                    using (EventRecord latestRecord = reader.ReadEvent())
+                    {
+                        if (latestRecord != null && latestRecord.RecordId.HasValue)
+                        {
+                            long latestId = latestRecord.RecordId.Value;
+
+                            if (latestId < _lastSeenRecordId)
+                            {
+                                // Log was likely cleared
+                                _lastSeenRecordId = 0;
+                                _pendingWatchdogRecordId = null;
+                            }
+                            else if (latestId > _lastSeenRecordId)
+                            {
+                                if (_pendingWatchdogRecordId.HasValue && latestId >= _pendingWatchdogRecordId.Value)
+                                {
+                                    Logger.WriteLine($"[{_logName}] Watchdog: Watcher stalled! Stuck at {_lastSeenRecordId}, missing up to {latestId}. Restarting...");
+                                    _pendingWatchdogRecordId = null;
+                                    _ = StopAndRecover();
+                                }
+                                else
+                                {
+                                    _pendingWatchdogRecordId = latestId;
+                                }
+                            }
+                            else
+                            {
+                                _pendingWatchdogRecordId = null;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (EventLogNotFoundException) { }
+            catch (Exception ex)
+            {
+                Logger.WriteLine($"[{_logName}] Watchdog error: {ex.Message}. Restarting monitor...");
+                _pendingWatchdogRecordId = null;
+                _ = StopAndRecover();
+            }
+        }
     }
 
     private string BuildXPathQuery(DateTimeOffset? since = null)
@@ -362,6 +436,11 @@ public class LogMonitor
                 {
                     using (record)
                     {
+                        if (record.RecordId.HasValue && record.RecordId.Value > _lastSeenRecordId)
+                        {
+                            _lastSeenRecordId = record.RecordId.Value;
+                        }
+
                         batch.Add(MapRecordToModel(record));
                     }
 
