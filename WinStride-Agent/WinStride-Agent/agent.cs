@@ -56,6 +56,10 @@ class Agent
             Logger.WriteLine("                    WinStride Agent Started                     ");
             Logger.WriteLine("================================================================");
 
+            int startDelaySeconds = 30;
+
+            await Task.Delay(TimeSpan.FromSeconds(startDelaySeconds));
+
             _ = StartHeartbeatLoop(BaseUrl, fullConfig.Global.HeartbeatInterval);
 
             List<Task> monitorTasks = new List<Task>();
@@ -277,12 +281,36 @@ public class LogMonitor
             string errorBody = await response.Content.ReadAsStringAsync();
             Logger.WriteLine($"[{_logName}] Error: {response.StatusCode} - {errorBody}");
 
+            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest || 
+                response.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity ||
+                response.StatusCode == System.Net.HttpStatusCode.RequestEntityTooLarge)
+            {
+                Logger.WriteLine($"[{_logName}] Rejected by API. Dead-lettering {data.Count} events to prevent pipeline blockage.");
+                await WriteToDeadLetterAsync(json);
+                return true;
+            }
+
             return false;
         }
         catch (Exception ex)
         {
             Logger.WriteLine($"[{_logName}] Network failure: {ex.Message}");
             return false;
+        }
+    }
+
+    private async Task WriteToDeadLetterAsync(string payload)
+    {
+        try
+        {
+            string dlDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DeadLetter");
+            Directory.CreateDirectory(dlDirectory);
+            string filePath = Path.Combine(dlDirectory, $"dl_{_logName}_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 8)}.json");
+            await File.WriteAllTextAsync(filePath, payload);
+        }
+        catch (Exception ex)
+        {
+            Logger.WriteLine($"[{_logName}] Failed to write to dead-letter queue: {ex.Message}");
         }
     }
 
