@@ -18,59 +18,84 @@ class Agent
 
     static async Task Main()
     {
-        string projectRoot = GetSourceDirectory();
-        string configPath = Path.Combine(projectRoot, "config.yaml");
-        AppConfig fullConfig = LoadConfig(configPath);
-
-        if (string.IsNullOrWhiteSpace(fullConfig.Global.BaseUrl))
+        AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
         {
-            Logger.WriteLine("[CRITICAL ERROR] 'global.baseUrl' is missing in config.yaml.");
-            Logger.WriteLine("The agent cannot start without a target API destination.");
-            return;
-        }
+            var ex = e.ExceptionObject as Exception;
+            Logger.WriteLine($"[FATAL CRASH] Unhandled AppDomain Exception: {ex?.Message}");
+            Logger.WriteLine($"[FATAL CRASH] StackTrace: {ex?.StackTrace}");
+            Logger.WriteLine("[FATAL CRASH] --- DEATH CERTIFICATE --- Agent Process Terminated.");
+        };
 
-        string BaseUrl = fullConfig.Global.BaseUrl;
-        int batchSize = fullConfig.Global.BatchSize;
-        Logger.MaxLogSizeMb = fullConfig.Global.MaxLogSizeMb;
-
-        Logger.WriteLine("\n\n\n");
-        Logger.WriteLine("================================================================");
-        Logger.WriteLine("                    WinStride Agent Started                     ");
-        Logger.WriteLine("================================================================");
-
-        _ = StartHeartbeatLoop(BaseUrl, fullConfig.Global.HeartbeatInterval);
-
-        List<Task> monitorTasks = new List<Task>();
-
-
-        foreach (KeyValuePair<string, LogConfig> logEntry in fullConfig.Logs)
+        TaskScheduler.UnobservedTaskException += (sender, e) =>
         {
-            if (!logEntry.Value.Enabled) continue;
+            Logger.WriteLine($"[FATAL CRASH] Unobserved Task Exception: {e.Exception.Message}");
+            Logger.WriteLine($"[FATAL CRASH] StackTrace: {e.Exception.StackTrace}");
+            Logger.WriteLine("[FATAL CRASH] --- DEATH CERTIFICATE --- Background Task Terminated.");
+            e.SetObserved();
+        };
 
-            try
-            {
-                LogMonitor monitor = new LogMonitor(logEntry.Key, logEntry.Value, client, BaseUrl, batchSize);
-                monitorTasks.Add(monitor.StartAsync());
-            }
-            catch (EventLogNotFoundException)
-            {
-                Logger.WriteLine($"[Warning] Log path '{logEntry.Key}' not found. Skipping.");
-            }
-            catch (UnauthorizedAccessException)
-            {
-                Logger.WriteLine($"[Error] Access Denied for '{logEntry.Key}'. Please run as Administrator.");
-            }
-        }
-
-        if (monitorTasks.Count == 0)
+        try
         {
-            Logger.WriteLine("No valid logs to monitor. Exiting.");
-            return;
-        }
+            string projectRoot = GetSourceDirectory();
+            string configPath = Path.Combine(projectRoot, "config.yaml");
+            AppConfig fullConfig = LoadConfig(configPath);
 
-        await Task.WhenAll(monitorTasks);
-        Logger.WriteLine("All monitors are active.");
-        await Task.Delay(-1);
+            if (string.IsNullOrWhiteSpace(fullConfig.Global.BaseUrl))
+            {
+                Logger.WriteLine("[CRITICAL ERROR] 'global.baseUrl' is missing in config.yaml.");
+                Logger.WriteLine("The agent cannot start without a target API destination.");
+                return;
+            }
+
+            string BaseUrl = fullConfig.Global.BaseUrl;
+            int batchSize = fullConfig.Global.BatchSize;
+            Logger.MaxLogSizeMb = fullConfig.Global.MaxLogSizeMb;
+
+            Logger.WriteLine("\n\n\n");
+            Logger.WriteLine("================================================================");
+            Logger.WriteLine("                    WinStride Agent Started                     ");
+            Logger.WriteLine("================================================================");
+
+            _ = StartHeartbeatLoop(BaseUrl, fullConfig.Global.HeartbeatInterval);
+
+            List<Task> monitorTasks = new List<Task>();
+
+
+            foreach (KeyValuePair<string, LogConfig> logEntry in fullConfig.Logs)
+            {
+                if (!logEntry.Value.Enabled) continue;
+
+                try
+                {
+                    LogMonitor monitor = new LogMonitor(logEntry.Key, logEntry.Value, client, BaseUrl, batchSize);
+                    monitorTasks.Add(monitor.StartAsync());
+                }
+                catch (EventLogNotFoundException)
+                {
+                    Logger.WriteLine($"[Warning] Log path '{logEntry.Key}' not found. Skipping.");
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    Logger.WriteLine($"[Error] Access Denied for '{logEntry.Key}'. Please run as Administrator.");
+                }
+            }
+
+            if (monitorTasks.Count == 0)
+            {
+                Logger.WriteLine("No valid logs to monitor. Exiting.");
+                return;
+            }
+
+            await Task.WhenAll(monitorTasks);
+            Logger.WriteLine("All monitors are active.");
+            await Task.Delay(-1);
+        }
+        catch (Exception ex)
+        {
+            Logger.WriteLine($"[FATAL CRASH] Main thread exception: {ex.Message}");
+            Logger.WriteLine($"[FATAL CRASH] StackTrace: {ex.StackTrace}");
+            Logger.WriteLine("[FATAL CRASH] --- DEATH CERTIFICATE --- Agent Process Terminated.");
+        }
     }
     private static AppConfig LoadConfig(string filePath)
     {
@@ -575,7 +600,11 @@ public static class Logger
     public static void WriteLine(string message)
     {
         string logLine = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}";
-        Console.WriteLine(logLine);
+        
+        if (Environment.UserInteractive)
+        {
+            Console.WriteLine(logLine);
+        }
 
         lock (_lock)
         {
