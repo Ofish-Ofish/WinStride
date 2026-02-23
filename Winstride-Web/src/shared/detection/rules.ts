@@ -16,6 +16,8 @@ export interface DetectionRule {
   module: Module;
   mitre?: string;
   description: string;
+  /** Event IDs this rule applies to (undefined = all events in the module) */
+  eventIds?: number[];
   /** Return true if a single event matches this rule. */
   match: (event: WinEvent) => boolean;
 }
@@ -87,23 +89,13 @@ export const multiEventRules: MultiEventRule[] = [
         const sorted = userEvents.sort(
           (a, b) => new Date(a.timeCreated).getTime() - new Date(b.timeCreated).getTime(),
         );
-        for (let i = 0; i <= sorted.length - BRUTE_FORCE_THRESHOLD; i++) {
-          const windowEnd = new Date(sorted[i].timeCreated).getTime() + BRUTE_FORCE_WINDOW_MS;
-          let count = 0;
-          for (
-            let j = i;
-            j < sorted.length && new Date(sorted[j].timeCreated).getTime() <= windowEnd;
-            j++
-          ) {
-            count++;
-          }
-          if (count >= BRUTE_FORCE_THRESHOLD) {
-            const start = new Date(sorted[i].timeCreated).getTime();
-            for (const ev of sorted) {
-              const t = new Date(ev.timeCreated).getTime();
-              if (t >= start && t <= windowEnd) flagged.add(ev.id);
-            }
-            break;
+        // Pre-compute timestamps once, then use O(n) sliding window
+        const ts = sorted.map((e) => new Date(e.timeCreated).getTime());
+        let windowStart = 0;
+        for (let i = 0; i < sorted.length; i++) {
+          while (ts[i] - ts[windowStart] > BRUTE_FORCE_WINDOW_MS) windowStart++;
+          if (i - windowStart + 1 >= BRUTE_FORCE_THRESHOLD) {
+            for (let k = windowStart; k <= i; k++) flagged.add(sorted[k].id);
           }
         }
       }

@@ -53,6 +53,39 @@ const LEVEL_MAP: Record<string, Severity> = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Extract EventIDs from detection blocks (for indexing)              */
+/* ------------------------------------------------------------------ */
+
+function collectEventIds(block: unknown, ids: Set<number>): void {
+  if (Array.isArray(block)) {
+    for (const item of block) collectEventIds(item, ids);
+    return;
+  }
+  if (typeof block !== 'object' || block === null) return;
+  for (const [key, val] of Object.entries(block as Record<string, unknown>)) {
+    if (key === 'EventID' || key === 'eventid' || key === 'eventId') {
+      if (typeof val === 'number') ids.add(val);
+      else if (typeof val === 'string') { const n = parseInt(val, 10); if (!isNaN(n)) ids.add(n); }
+      else if (Array.isArray(val)) {
+        for (const v of val) {
+          if (typeof v === 'number') ids.add(v);
+          else if (typeof v === 'string') { const n = parseInt(v, 10); if (!isNaN(n)) ids.add(n); }
+        }
+      }
+    }
+  }
+}
+
+function extractEventIdsFromBlocks(detection: Record<string, unknown>): number[] | undefined {
+  const ids = new Set<number>();
+  for (const [key, block] of Object.entries(detection)) {
+    if (key === 'condition') continue;
+    collectEventIds(block, ids);
+  }
+  return ids.size > 0 ? [...ids] : undefined;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Parse a detection block into a predicate                           */
 /* ------------------------------------------------------------------ */
 
@@ -130,6 +163,9 @@ export function compileSigmaRule(raw: SigmaRuleYaml): DetectionRule | null {
   const mitre = extractMitre(tags);
   const ruleId = id ? `SIGMA-${id.slice(0, 8)}` : `SIGMA-${(title ?? 'unknown').slice(0, 20)}`;
 
+  // Extract EventIDs from detection blocks (for rules without logsource eventIds)
+  const detectedEventIds = mapping.eventIds ?? extractEventIdsFromBlocks(detection);
+
   // Separate detection blocks from the condition string
   const { condition: conditionStr, ...blocks } = detection;
   if (typeof conditionStr !== 'string') return null;
@@ -182,6 +218,7 @@ export function compileSigmaRule(raw: SigmaRuleYaml): DetectionRule | null {
     module: mapping.module,
     mitre,
     description: description ?? '',
+    eventIds: detectedEventIds,
     match: matchFn,
   };
 }

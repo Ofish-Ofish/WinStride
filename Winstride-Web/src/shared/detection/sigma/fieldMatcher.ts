@@ -1,5 +1,10 @@
-import { getDataArray, getDataField } from '../../eventParsing';
+import { getDataArray, getDataField, getSystemField } from '../../eventParsing';
 import type { WinEvent } from '../../../modules/security/shared/types';
+
+/** System-level fields that live in Event.System, not EventData.Data */
+const SYSTEM_FIELDS = new Set([
+  'Provider_Name', 'Provider_Guid', 'Channel', 'Computer',
+]);
 
 /**
  * Parse a Sigma field key like "CommandLine|contains|all" into
@@ -13,9 +18,11 @@ export function parseFieldKey(key: string): { fieldName: string; modifiers: stri
 /**
  * Get a field value from a WinEvent.
  * Handles special Sigma pseudo-fields: EventID maps to e.eventId.
+ * System-level fields (Provider_Name, Channel, etc.) are fetched from Event.System.
  */
 export function getField(event: WinEvent, fieldName: string): string {
   if (fieldName === 'EventID') return String(event.eventId);
+  if (SYSTEM_FIELDS.has(fieldName)) return getSystemField(event, fieldName);
   const arr = getDataArray(event);
   if (!arr) return '';
   return getDataField(arr, fieldName);

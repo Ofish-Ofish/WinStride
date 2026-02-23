@@ -1,7 +1,8 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef } from 'react';
 import type { WinEvent } from '../../modules/security/shared/types';
 import {
   type Detection,
+  type DetectionRule,
   type Module,
   type Severity,
   getRulesForModule,
@@ -21,60 +22,109 @@ export interface DetectionMap {
   counts: Record<Severity, number>;
 }
 
-export function runDetections(events: WinEvent[], module: Module): DetectionMap {
+/* ---- EventId-indexed rule cache ---- */
+
+interface IndexedRules {
+  /** Pre-built combined rule lists: eventId-specific + universal */
+  combined: Map<number, DetectionRule[]>;
+  /** Rules without eventId restriction */
+  universal: DetectionRule[];
+}
+
+const _indexCache = new Map<Module, IndexedRules>();
+
+function getIndexedRules(module: Module): IndexedRules {
+  const cached = _indexCache.get(module);
+  if (cached) return cached;
+
   const rules = getRulesForModule(module);
+  const byEventId = new Map<number, DetectionRule[]>();
+  const universal: DetectionRule[] = [];
+
+  for (const rule of rules) {
+    if (rule.eventIds && rule.eventIds.length > 0) {
+      for (const eid of rule.eventIds) {
+        let arr = byEventId.get(eid);
+        if (!arr) { arr = []; byEventId.set(eid, arr); }
+        arr.push(rule);
+      }
+    } else {
+      universal.push(rule);
+    }
+  }
+
+  // Pre-build combined lists (eventId-specific + universal) — avoids per-event allocation
+  const combined = new Map<number, DetectionRule[]>();
+  for (const [eid, eidRules] of byEventId) {
+    combined.set(eid, universal.length > 0 ? [...eidRules, ...universal] : eidRules);
+  }
+
+  const result: IndexedRules = { combined, universal };
+  _indexCache.set(module, result);
+
+  const indexed = rules.length - universal.length;
+  console.log(`[Sigma] Indexed ${module}: ${indexed} rules by eventId, ${universal.length} universal`);
+
+  return result;
+}
+
+/* ---- Core detection runner ---- */
+
+function makeDet(rule: DetectionRule): Detection {
+  return { ruleId: rule.id, ruleName: rule.name, severity: rule.severity, mitre: rule.mitre, description: rule.description };
+}
+
+/**
+ * Run detections on events[startIdx..] and merge with previous results.
+ * Pass startIdx=0 and prev=null for a full run.
+ */
+export function runDetections(
+  events: WinEvent[],
+  module: Module,
+  startIdx = 0,
+  prev: DetectionMap | null = null,
+): DetectionMap {
+  const indexed = getIndexedRules(module);
   const multiRules = getMultiEventRulesForModule(module);
+
+  // Clone previous results (deep-clone inner arrays to avoid mutation)
   const byEventId = new Map<number, Detection[]>();
   const allSet = new Map<string, Detection>();
+  if (prev) {
+    for (const [k, v] of prev.byEventId) byEventId.set(k, [...v]);
+    for (const d of prev.all) allSet.set(d.ruleId, d);
+  }
 
   const addDetection = (eventId: number, det: Detection) => {
     let arr = byEventId.get(eventId);
     if (!arr) { arr = []; byEventId.set(eventId, arr); }
-    // Avoid duplicate rules on the same event
-    if (!arr.some((d) => d.ruleId === det.ruleId)) {
-      arr.push(det);
-    }
+    if (!arr.some((d) => d.ruleId === det.ruleId)) arr.push(det);
     allSet.set(det.ruleId, det);
   };
 
-  // Single-event rules
-  for (const event of events) {
+  // Single-event rules — only process events from startIdx, using eventId index
+  for (let i = startIdx; i < events.length; i++) {
+    const event = events[i];
+    const rules = indexed.combined.get(event.eventId) ?? indexed.universal;
     for (const rule of rules) {
       if (rule.match(event)) {
-        addDetection(event.id, {
-          ruleId: rule.id,
-          ruleName: rule.name,
-          severity: rule.severity,
-          mitre: rule.mitre,
-          description: rule.description,
-        });
+        addDetection(event.id, makeDet(rule));
       }
     }
   }
 
-  // Multi-event rules
+  // Multi-event rules — need all events (O(n) sliding window, runs fast)
   for (const rule of multiRules) {
     const flaggedIds = rule.matchAll(events);
     if (flaggedIds.size === 0) continue;
-    const det: Detection = {
-      ruleId: rule.id,
-      ruleName: rule.name,
-      severity: rule.severity,
-      mitre: rule.mitre,
-      description: rule.description,
-    };
-    for (const id of flaggedIds) {
-      addDetection(id, det);
-    }
-    allSet.set(rule.id, det);
+    const det: Detection = { ruleId: rule.id, ruleName: rule.name, severity: rule.severity, mitre: rule.mitre, description: rule.description };
+    for (const id of flaggedIds) addDetection(id, det);
   }
 
   // Count by severity
   const counts: Record<Severity, number> = { info: 0, low: 0, medium: 0, high: 0, critical: 0 };
   for (const dets of byEventId.values()) {
-    for (const d of dets) {
-      counts[d.severity]++;
-    }
+    for (const d of dets) counts[d.severity]++;
   }
 
   return { byEventId, all: [...allSet.values()], counts };
@@ -128,15 +178,37 @@ export function edgeSeverity(eventIds: number[], detections: DetectionMap): Seve
 }
 
 /* ------------------------------------------------------------------ */
-/*  React hook                                                         */
+/*  React hook — incremental detection                                 */
 /* ------------------------------------------------------------------ */
 
+const EMPTY_MAP: DetectionMap = {
+  byEventId: new Map(),
+  all: [],
+  counts: { info: 0, low: 0, medium: 0, high: 0, critical: 0 },
+};
+
 export function useDetections(events: WinEvent[] | undefined, module: Module): DetectionMap {
+  const cacheRef = useRef<{ module: Module; count: number; map: DetectionMap } | null>(null);
+
   return useMemo(() => {
     if (!events || events.length === 0) {
-      return { byEventId: new Map(), all: [], counts: { info: 0, low: 0, medium: 0, high: 0, critical: 0 } };
+      cacheRef.current = null;
+      return EMPTY_MAP;
     }
-    return runDetections(events, module);
+
+    const cache = cacheRef.current;
+    let startIdx = 0;
+    let prev: DetectionMap | null = null;
+
+    // Incremental: same module, array grew (batch loading appends events)
+    if (cache && cache.module === module && events.length > cache.count) {
+      startIdx = cache.count;
+      prev = cache.map;
+    }
+
+    const result = runDetections(events, module, startIdx, prev);
+    cacheRef.current = { module, count: events.length, map: result };
+    return result;
   }, [events, module]);
 }
 
@@ -149,7 +221,7 @@ export interface SeverityIntegration {
   /** Pass to VirtualizedEventList.getSortValue */
   getSortValue: (columnKey: string, event: WinEvent) => string | number | undefined;
   /** Filter events by minimum severity — returns input unchanged if minSeverity is null */
-  filterBySeverity: (events: WinEvent[], minSeverity: Severity | null) => WinEvent[];
+  filterBySeverity: (events: WinEvent[], minSeverity: Severity | null, hideUndetected?: boolean) => WinEvent[];
   /** Get severity info for an event (for cell rendering) */
   getEventSeverity: (event: WinEvent) => { severity: Severity; detections: Detection[] } | null;
 }
@@ -168,12 +240,12 @@ export function useSeverityIntegration(events: WinEvent[] | undefined, module: M
   );
 
   const filterBySeverity = useCallback(
-    (evts: WinEvent[], minSeverity: Severity | null) => {
-      if (!minSeverity) return evts;
-      const minRank = SEVERITY_RANK[minSeverity];
+    (evts: WinEvent[], minSeverity: Severity | null, hideUndetected = false) => {
+      if (!minSeverity && !hideUndetected) return evts;
+      const minRank = minSeverity ? SEVERITY_RANK[minSeverity] : 0;
       return evts.filter((e) => {
         const dets = detections.byEventId.get(e.id);
-        if (!dets || dets.length === 0) return true; // no detection = always show
+        if (!dets || dets.length === 0) return !hideUndetected;
         return SEVERITY_RANK[maxSeverity(dets)!] >= minRank;
       });
     },
@@ -189,5 +261,8 @@ export function useSeverityIntegration(events: WinEvent[] | undefined, module: M
     [detections],
   );
 
-  return { detections, getSortValue, filterBySeverity, getEventSeverity };
+  return useMemo(
+    () => ({ detections, getSortValue, filterBySeverity, getEventSeverity }),
+    [detections, getSortValue, filterBySeverity, getEventSeverity],
+  );
 }
