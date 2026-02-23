@@ -166,6 +166,13 @@ export interface VirtualizedEventListProps {
 
   /** Optional override for sort values — return undefined to fall back to col.getValue */
   getSortValue?: (columnKey: string, event: WinEvent) => string | number | undefined;
+
+  /** Number of events loaded so far (for progress bar) */
+  loadedCount?: number;
+  /** Total event count from server (for progress bar) */
+  totalCount?: number | null;
+  /** Whether all pages have finished loading */
+  isComplete?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -209,6 +216,9 @@ export default function VirtualizedEventList({
   onSearchChange,
   jsonMapper,
   getSortValue,
+  loadedCount,
+  totalCount,
+  isComplete,
 }: VirtualizedEventListProps) {
   /* ---- List state ---- */
   const [sortKey, setSortKey] = useState<string>('time');
@@ -328,6 +338,17 @@ export default function VirtualizedEventList({
                 <span className="text-gray-300"> / {rawCount.toLocaleString()}</span>
               )}
             </span>
+          )}
+          {isComplete === false && totalCount != null && loadedCount != null && (
+            <div className="flex items-center gap-2 text-[11px] text-gray-300 tabular-nums">
+              <div className="w-24 h-1.5 bg-[#1c2128] rounded overflow-hidden">
+                <div
+                  className="h-full bg-[#58a6ff] rounded transition-all duration-300"
+                  style={{ width: `${Math.min(100, (loadedCount / totalCount) * 100)}%` }}
+                />
+              </div>
+              <span>{loadedCount.toLocaleString()} / {totalCount.toLocaleString()}</span>
+            </div>
           )}
           <div className="relative">
             <svg
