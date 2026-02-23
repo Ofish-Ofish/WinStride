@@ -145,7 +145,7 @@ export const graphStyles: CyStylesheet[] = [
   },
   {
     selector: 'edge[severity = "critical"]',
-    style: { 'line-color': '#da3633', 'target-arrow-color': '#ff3b30', width: 'mapData(logonCount, 1, 50, 2.5, 7)' },
+    style: { 'line-color': '#ec4899', 'target-arrow-color': '#f472b6', width: 'mapData(logonCount, 1, 50, 2.5, 7)' },
   },
 
   // Highlighted — selected + neighbors glow in their own color
@@ -225,7 +225,7 @@ export const graphStyles: CyStylesheet[] = [
   },
   {
     selector: 'edge.highlighted[severity = "critical"]',
-    style: { 'line-color': '#ff3b30', 'target-arrow-color': '#ff3b30', width: 'mapData(logonCount, 1, 50, 3, 8)' },
+    style: { 'line-color': '#f472b6', 'target-arrow-color': '#f472b6', width: 'mapData(logonCount, 1, 50, 3, 8)' },
   },
 
   // Dimmed — ghost outline

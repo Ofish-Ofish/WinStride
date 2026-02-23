@@ -95,10 +95,15 @@ export function runDetections(
     for (const d of prev.all) allSet.set(d.ruleId, d);
   }
 
+  const seenPerEvent = new Map<number, Set<string>>();
   const addDetection = (eventId: number, det: Detection) => {
+    let seen = seenPerEvent.get(eventId);
+    if (!seen) { seen = new Set(); seenPerEvent.set(eventId, seen); }
+    if (seen.has(det.ruleId)) return;
+    seen.add(det.ruleId);
     let arr = byEventId.get(eventId);
     if (!arr) { arr = []; byEventId.set(eventId, arr); }
-    if (!arr.some((d) => d.ruleId === det.ruleId)) arr.push(det);
+    arr.push(det);
     allSet.set(det.ruleId, det);
   };
 
@@ -150,7 +155,7 @@ export const SEVERITY_COLORS: Record<Severity, { text: string; bg: string; borde
   low:      { text: 'text-[#79c0ff]',  bg: 'bg-[#58a6ff]/15',   border: 'border-[#58a6ff]/30' },
   medium:   { text: 'text-[#f0a050]',  bg: 'bg-[#f0883e]/15',   border: 'border-[#f0883e]/30' },
   high:     { text: 'text-[#ff7b72]',  bg: 'bg-[#f85149]/15',   border: 'border-[#f85149]/30' },
-  critical: { text: 'text-[#ff3b30]',  bg: 'bg-[#da3633]/20',   border: 'border-[#da3633]/40' },
+  critical: { text: 'text-[#f472b6]',  bg: 'bg-[#ec4899]/20',   border: 'border-[#ec4899]/40' },
 };
 
 export const SEVERITY_LABELS: Record<Severity, string> = {
@@ -201,28 +206,65 @@ function runDetectionsAsync(
     for (const d of prev.all) allSet.set(d.ruleId, d);
   }
 
+  const seenPerEvent = new Map<number, Set<string>>();
   const addDet = (eventId: number, det: Detection) => {
+    let seen = seenPerEvent.get(eventId);
+    if (!seen) { seen = new Set(); seenPerEvent.set(eventId, seen); }
+    if (seen.has(det.ruleId)) return;
+    seen.add(det.ruleId);
     let arr = byEventId.get(eventId);
     if (!arr) { arr = []; byEventId.set(eventId, arr); }
-    if (!arr.some((d) => d.ruleId === det.ruleId)) arr.push(det);
+    arr.push(det);
     allSet.set(det.ruleId, det);
   };
+
+  function buildResult(): DetectionMap {
+    const counts: Record<Severity, number> = { info: 0, low: 0, medium: 0, high: 0, critical: 0 };
+    for (const dets of byEventId.values()) {
+      for (const d of dets) counts[d.severity]++;
+    }
+    return { byEventId, all: [...allSet.values()], counts };
+  }
 
   let i = startIdx;
 
   function finalize() {
     if (token.cancelled) return;
-    for (const rule of multiRules) {
-      const flaggedIds = rule.matchAll(events);
-      if (flaggedIds.size === 0) continue;
-      const det: Detection = { ruleId: rule.id, ruleName: rule.name, severity: rule.severity, mitre: rule.mitre, description: rule.description };
-      for (const id of flaggedIds) addDet(id, det);
+
+    // Emit single-event results immediately so the UI shows detections
+    // while correlations are still processing.
+    if (multiRules.length > 0) {
+      onComplete(buildResult());
     }
-    const counts: Record<Severity, number> = { info: 0, low: 0, medium: 0, high: 0, critical: 0 };
-    for (const dets of byEventId.values()) {
-      for (const d of dets) counts[d.severity]++;
+
+    // Process correlation rules asynchronously, yielding between each
+    let ruleIdx = 0;
+    function processCorrelations() {
+      if (token.cancelled) return;
+      const deadline = performance.now() + CHUNK_BUDGET_MS;
+
+      while (ruleIdx < multiRules.length) {
+        const rule = multiRules[ruleIdx];
+        const flaggedIds = rule.matchAll(events);
+        if (flaggedIds.size > 0) {
+          const det: Detection = { ruleId: rule.id, ruleName: rule.name, severity: rule.severity, mitre: rule.mitre, description: rule.description };
+          for (const id of flaggedIds) addDet(id, det);
+        }
+        ruleIdx++;
+        if (performance.now() >= deadline) {
+          setTimeout(processCorrelations, 0);
+          return;
+        }
+      }
+
+      onComplete(buildResult());
     }
-    onComplete({ byEventId, all: [...allSet.values()], counts });
+
+    if (multiRules.length > 0) {
+      setTimeout(processCorrelations, 0);
+    } else {
+      onComplete(buildResult());
+    }
   }
 
   function processChunk() {
