@@ -197,18 +197,26 @@ export function compileSigmaRule(raw: SigmaRuleYaml): DetectionRule | null {
 
   // Build the match function
   const eventIdSet = mapping.eventIds ? new Set(mapping.eventIds) : null;
+  const blockNames = [...blockPredicates.keys()];
   const matchFn = (event: WinEvent): boolean => {
     // Guard on event ID if the logsource maps to specific IDs
     if (eventIdSet && !eventIdSet.has(event.eventId)) return false;
 
-    // Evaluate each named detection block
-    const blockResults = new Map<string, boolean>();
-    for (const [name, pred] of blockPredicates) {
-      blockResults.set(name, pred(event));
-    }
+    // Lazy block evaluation — only compute blocks the condition actually needs.
+    // Combined with short-circuit in evaluateCondition (&&/||), this skips
+    // expensive filter blocks when the selection already fails.
+    const cache = new Map<string, boolean>();
+    const getBlock = (name: string): boolean => {
+      const cached = cache.get(name);
+      if (cached !== undefined) return cached;
+      const pred = blockPredicates.get(name);
+      const result = pred ? pred(event) : false;
+      cache.set(name, result);
+      return result;
+    };
 
     // Any condition part matching is sufficient (OR between pipe-separated conditions)
-    return conditionAsts.some((ast) => evaluateCondition(ast!, blockResults));
+    return conditionAsts.some((ast) => evaluateCondition(ast!, getBlock, blockNames));
   };
 
   return {

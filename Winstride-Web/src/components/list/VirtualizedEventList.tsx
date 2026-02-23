@@ -458,13 +458,14 @@ export default function VirtualizedEventList({
                   : emptyMessage}
               </div>
             ) : (
-              <div style={{ height: totalHeight, position: 'relative' }}>
+              <div style={{ height: totalHeight, position: 'relative', contain: 'strict' }}>
                 <div
                   style={{
                     position: 'absolute',
                     top: startIdx * ROW_HEIGHT,
                     left: 0,
                     right: 0,
+                    willChange: 'transform',
                   }}
                 >
                   {visibleEvents.map((event) => {

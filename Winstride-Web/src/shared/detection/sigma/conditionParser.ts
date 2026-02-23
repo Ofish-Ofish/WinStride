@@ -122,33 +122,38 @@ function matchPattern(pattern: string, names: string[]): string[] {
 }
 
 /**
- * Evaluate a parsed condition against a map of named detection block results.
+ * Evaluate a parsed condition with lazy block resolution.
+ * Blocks are evaluated on-demand so short-circuit (and/or) avoids wasted work.
+ *
+ * @param getBlock  Lazily evaluates a named detection block (cached by caller).
+ * @param blockNames  All available block names (needed for quantifier patterns).
  */
 export function evaluateCondition(
   node: ConditionNode,
-  blockResults: Map<string, boolean>,
+  getBlock: (name: string) => boolean,
+  blockNames: string[],
 ): boolean {
   switch (node.type) {
     case 'ref':
-      return blockResults.get(node.name) ?? false;
+      return getBlock(node.name);
     case 'not':
-      return !evaluateCondition(node.child, blockResults);
+      return !evaluateCondition(node.child, getBlock, blockNames);
     case 'and':
       return (
-        evaluateCondition(node.left, blockResults) &&
-        evaluateCondition(node.right, blockResults)
+        evaluateCondition(node.left, getBlock, blockNames) &&
+        evaluateCondition(node.right, getBlock, blockNames)
       );
     case 'or':
       return (
-        evaluateCondition(node.left, blockResults) ||
-        evaluateCondition(node.right, blockResults)
+        evaluateCondition(node.left, getBlock, blockNames) ||
+        evaluateCondition(node.right, getBlock, blockNames)
       );
     case 'quantifier': {
-      const names = matchPattern(node.pattern, [...blockResults.keys()]);
+      const names = matchPattern(node.pattern, blockNames);
       if (node.mode === 'all_of') {
-        return names.length > 0 && names.every((n) => blockResults.get(n) ?? false);
+        return names.length > 0 && names.every((n) => getBlock(n));
       }
-      return names.some((n) => blockResults.get(n) ?? false);
+      return names.some((n) => getBlock(n));
     }
   }
 }

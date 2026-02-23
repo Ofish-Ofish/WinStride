@@ -16,16 +16,34 @@ export function parseFieldKey(key: string): { fieldName: string; modifiers: stri
 }
 
 /**
- * Get a field value from a WinEvent.
+ * Per-event field value cache.
+ * Multiple Sigma rules often check the same field (e.g. CommandLine) on the
+ * same event. Caching avoids redundant linear scans of the Data array.
+ */
+const _fieldValueCache = new WeakMap<WinEvent, Map<string, string>>();
+
+/**
+ * Get a field value from a WinEvent (cached per event+field).
  * Handles special Sigma pseudo-fields: EventID maps to e.eventId.
  * System-level fields (Provider_Name, Channel, etc.) are fetched from Event.System.
  */
 export function getField(event: WinEvent, fieldName: string): string {
   if (fieldName === 'EventID') return String(event.eventId);
   if (SYSTEM_FIELDS.has(fieldName)) return getSystemField(event, fieldName);
+
+  let cache = _fieldValueCache.get(event);
+  if (cache) {
+    const cached = cache.get(fieldName);
+    if (cached !== undefined) return cached;
+  }
+
   const arr = getDataArray(event);
   if (!arr) return '';
-  return getDataField(arr, fieldName);
+  const value = getDataField(arr, fieldName);
+
+  if (!cache) { cache = new Map(); _fieldValueCache.set(event, cache); }
+  cache.set(fieldName, value);
+  return value;
 }
 
 /**

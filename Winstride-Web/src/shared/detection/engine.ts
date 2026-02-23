@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { WinEvent } from '../../modules/security/shared/types';
 import {
   type Detection,
@@ -178,7 +178,79 @@ export function edgeSeverity(eventIds: number[], detections: DetectionMap): Seve
 }
 
 /* ------------------------------------------------------------------ */
-/*  React hook — incremental detection                                 */
+/*  Time-boxed async detection (yields to browser between chunks)      */
+/* ------------------------------------------------------------------ */
+
+const CHUNK_BUDGET_MS = 8; // ~half a 60fps frame
+
+function runDetectionsAsync(
+  events: WinEvent[],
+  module: Module,
+  startIdx: number,
+  prev: DetectionMap | null,
+  token: { cancelled: boolean },
+  onComplete: (map: DetectionMap) => void,
+): void {
+  const indexed = getIndexedRules(module);
+  const multiRules = getMultiEventRulesForModule(module);
+
+  const byEventId = new Map<number, Detection[]>();
+  const allSet = new Map<string, Detection>();
+  if (prev) {
+    for (const [k, v] of prev.byEventId) byEventId.set(k, [...v]);
+    for (const d of prev.all) allSet.set(d.ruleId, d);
+  }
+
+  const addDet = (eventId: number, det: Detection) => {
+    let arr = byEventId.get(eventId);
+    if (!arr) { arr = []; byEventId.set(eventId, arr); }
+    if (!arr.some((d) => d.ruleId === det.ruleId)) arr.push(det);
+    allSet.set(det.ruleId, det);
+  };
+
+  let i = startIdx;
+
+  function finalize() {
+    if (token.cancelled) return;
+    for (const rule of multiRules) {
+      const flaggedIds = rule.matchAll(events);
+      if (flaggedIds.size === 0) continue;
+      const det: Detection = { ruleId: rule.id, ruleName: rule.name, severity: rule.severity, mitre: rule.mitre, description: rule.description };
+      for (const id of flaggedIds) addDet(id, det);
+    }
+    const counts: Record<Severity, number> = { info: 0, low: 0, medium: 0, high: 0, critical: 0 };
+    for (const dets of byEventId.values()) {
+      for (const d of dets) counts[d.severity]++;
+    }
+    onComplete({ byEventId, all: [...allSet.values()], counts });
+  }
+
+  function processChunk() {
+    if (token.cancelled) return;
+    const deadline = performance.now() + CHUNK_BUDGET_MS;
+
+    while (i < events.length) {
+      const event = events[i];
+      const rules = indexed.combined.get(event.eventId) ?? indexed.universal;
+      for (const rule of rules) {
+        if (rule.match(event)) addDet(event.id, makeDet(rule));
+      }
+      i++;
+      // Check budget every 64 events to avoid perf.now() overhead
+      if ((i & 63) === 0 && performance.now() >= deadline) {
+        setTimeout(processChunk, 0);
+        return;
+      }
+    }
+
+    finalize();
+  }
+
+  processChunk();
+}
+
+/* ------------------------------------------------------------------ */
+/*  React hook — incremental detection (async, non-blocking)           */
 /* ------------------------------------------------------------------ */
 
 const EMPTY_MAP: DetectionMap = {
@@ -188,13 +260,21 @@ const EMPTY_MAP: DetectionMap = {
 };
 
 export function useDetections(events: WinEvent[] | undefined, module: Module): DetectionMap {
+  const [result, setResult] = useState<DetectionMap>(EMPTY_MAP);
   const cacheRef = useRef<{ module: Module; count: number; map: DetectionMap } | null>(null);
+  const cancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
-  return useMemo(() => {
+  useEffect(() => {
     if (!events || events.length === 0) {
       cacheRef.current = null;
-      return EMPTY_MAP;
+      setResult(EMPTY_MAP);
+      return;
     }
+
+    // Cancel any in-progress detection
+    cancelRef.current.cancelled = true;
+    const token = { cancelled: false };
+    cancelRef.current = token;
 
     const cache = cacheRef.current;
     let startIdx = 0;
@@ -206,10 +286,15 @@ export function useDetections(events: WinEvent[] | undefined, module: Module): D
       prev = cache.map;
     }
 
-    const result = runDetections(events, module, startIdx, prev);
-    cacheRef.current = { module, count: events.length, map: result };
-    return result;
+    runDetectionsAsync(events, module, startIdx, prev, token, (map) => {
+      cacheRef.current = { module, count: events.length, map };
+      setResult(map);
+    });
+
+    return () => { token.cancelled = true; };
   }, [events, module]);
+
+  return result;
 }
 
 /* ------------------------------------------------------------------ */
