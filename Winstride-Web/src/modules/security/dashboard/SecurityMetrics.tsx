@@ -1,10 +1,8 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchEvents } from '../../../api/client';
 import type { WinEvent, LogonInfo } from '../shared/types';
-import { buildODataFilter } from '../shared/buildODataFilter';
 import { getDefaultFilters, type GraphFilters } from '../shared/filterTypes';
-import { isSystemAccount } from '../shared/eventMeta';
+import { isSystemAccount, ALL_EVENT_IDS } from '../shared/eventMeta';
+import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
 import { useDashboardStats } from './useDashboardStats';
 import { resolveTimeBounds } from './timeUtils';
 import TimeRangePicker from './TimeRangePicker';
@@ -76,17 +74,12 @@ export default function SecurityMetrics() {
     return f;
   }, [timeStart, timeEnd]);
 
-  const odataFilter = useMemo(() => buildODataFilter(filters), [filters]);
-
-  const { data: events, isLoading, error } = useQuery<WinEvent[]>({
-    queryKey: ['events', 'security-dashboard', odataFilter],
-    queryFn: () => fetchEvents({
-      $filter: odataFilter,
-      $select: 'eventId,machineName,timeCreated,eventData',
-      $orderby: 'timeCreated desc',
-      $top: '100',
-    }),
-    refetchInterval: 30_000,
+  const { events, isLoading, error } = useModuleEvents({
+    logName: 'Security',
+    allEventIds: ALL_EVENT_IDS,
+    eventFilters: filters.eventFilters,
+    timeStart: filters.timeStart,
+    timeEnd: filters.timeEnd,
   });
 
   const logons = useMemo(() => {
