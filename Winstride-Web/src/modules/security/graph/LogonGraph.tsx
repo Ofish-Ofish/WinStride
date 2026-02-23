@@ -1,6 +1,4 @@
 import { useRef, useMemo, useState, useCallback, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchEvents } from '../../../api/client';
 import { transformEvents, isSystemAccount, LOGON_TYPE_LABELS } from './transformEvents';
 import { useCytoscape } from '../../../shared/graph';
 import { graphStyles } from './graphStyles';
@@ -10,10 +8,11 @@ import NodeDetailPanel from './NodeDetailPanel';
 import GraphFilterPanel from './GraphFilterPanel';
 import { DEFAULT_FILTERS, resolveTriState, type GraphFilters } from '../shared/filterTypes';
 import { loadFiltersFromStorage, saveFiltersToStorage } from '../shared/filterSerializer';
-import { buildODataFilter } from '../shared/buildODataFilter';
-import type { WinEvent, GraphNode, GraphEdge } from '../shared/types';
+import type { GraphNode, GraphEdge } from '../shared/types';
 import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
 import { useSeverityIntegration, edgeSeverity } from '../../../shared/detection/engine';
+import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
+import { ALL_EVENT_IDS } from '../shared/eventMeta';
 
 /* ── Hub-spoke position calculator (pre-layout seed) ─────────────── */
 
@@ -162,16 +161,12 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     document.addEventListener('mouseup', onUp);
   }, [panelWidth]);
 
-  const odataFilter = useMemo(() => buildODataFilter(filters), [filters.eventFilters, filters.timeStart, filters.timeEnd]);
-
-  const { data: events, isLoading, error } = useQuery<WinEvent[]>({
-    queryKey: ['events', 'security-graph', odataFilter],
-    queryFn: () => fetchEvents({
-      $filter: odataFilter,
-      $select: 'id,eventId,machineName,timeCreated,eventData',
-      $top: '100',
-    }),
-    refetchInterval: 30000,
+  const { events, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
+    logName: 'Security',
+    allEventIds: ALL_EVENT_IDS,
+    eventFilters: filters.eventFilters,
+    timeStart: filters.timeStart,
+    timeEnd: filters.timeEnd,
   });
 
   const { detections: sevDetections, filterBySeverity } = useSeverityIntegration(events, 'security');
@@ -361,6 +356,17 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
       <div className="flex items-center justify-between flex-shrink-0 mb-2">
         <Legend />
         <div className="flex items-center gap-3">
+          {isComplete === false && totalCount != null && (
+            <div className="flex items-center gap-2 text-[11px] text-gray-300 tabular-nums">
+              <div className="w-24 h-1.5 bg-[#1c2128] rounded overflow-hidden">
+                <div
+                  className="h-full bg-[#58a6ff] rounded transition-all duration-300"
+                  style={{ width: `${Math.min(100, (loadedCount / totalCount) * 100)}%` }}
+                />
+              </div>
+              <span>{loadedCount.toLocaleString()} / {totalCount.toLocaleString()}</span>
+            </div>
+          )}
           {nodes.length > 0 && (
             <span className="text-[11px] text-gray-600">
               {nodes.length} nodes &middot; {edges.length} edges
