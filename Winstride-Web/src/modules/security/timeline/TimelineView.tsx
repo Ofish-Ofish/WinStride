@@ -59,7 +59,7 @@ function parseLogons(events: WinEvent[]): LogonInfo[] {
   return results;
 }
 
-export default function TimelineView() {
+export default function TimelineView({ visible = true }: { visible?: boolean }) {
   const [timeStart, setTimeStart] = useState(() => new Date(Date.now() - 24 * 3600_000).toISOString());
   const [timeEnd, setTimeEnd] = useState('');
   const [entityMode, setEntityMode] = useState<EntityMode>('user');
@@ -79,7 +79,7 @@ export default function TimelineView() {
     eventFilters: filters.eventFilters,
     timeStart: filters.timeStart,
     timeEnd: filters.timeEnd,
-  });
+  }, { enabled: visible });
 
   const logons = useMemo(() => {
     if (!events) return [];

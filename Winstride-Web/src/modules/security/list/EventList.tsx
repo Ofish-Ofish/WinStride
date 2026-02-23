@@ -99,7 +99,7 @@ export default function EventList({ visible }: { visible: boolean }) {
     eventFilters: filters.eventFilters,
     timeStart: filters.timeStart,
     timeEnd: filters.timeEnd,
-  });
+  }, { enabled: visible });
 
   const sev = useSeverityIntegration(rawEvents, 'security');
 
@@ -133,129 +133,88 @@ export default function EventList({ visible }: { visible: boolean }) {
     };
   }, [rawEvents]);
 
-  /* ---- Client-side filtering ---- */
-  const filteredEvents = useMemo(() => {
+  /* ---- Client-side filtering (single pass, no sev dependency) ---- */
+  const dataFiltered = useMemo(() => {
     if (!rawEvents) return [];
-    let events = rawEvents;
 
-    // Logon type filter
-    if (filters.logonTypeFilters.size > 0) {
-      const allLogonTypes = Object.keys(LOGON_TYPE_LABELS).map(Number);
-      const allowed = new Set(resolveTriState(allLogonTypes, filters.logonTypeFilters));
-      events = events.filter((e) => {
-        const parsed = parseEventData(e);
-        if (!parsed || parsed.logonType < 0) return true;
-        return allowed.has(parsed.logonType);
-      });
-    }
+    // Pre-compute filter sets once
+    const logonAllowed = filters.logonTypeFilters.size > 0
+      ? new Set(resolveTriState(Object.keys(LOGON_TYPE_LABELS).map(Number), filters.logonTypeFilters))
+      : null;
 
-    // Hide machine/system accounts
-    if (filters.hideMachineAccounts) {
-      events = events.filter((e) => {
-        const parsed = parseEventData(e);
-        if (!parsed || !parsed.targetUserName) return true;
-        return !isSystemAccount(parsed.targetUserName);
-      });
-    }
-
-    // Machine filter
+    let machineSelect: Set<string> | null = null;
+    let machineExclude: Set<string> | null = null;
     if (filters.machineFilters.size > 0) {
-      const selected = new Set<string>();
-      const excluded = new Set<string>();
-      for (const [name, state] of filters.machineFilters) {
-        if (state === 'select') selected.add(name);
-        else if (state === 'exclude') excluded.add(name);
-      }
-      if (selected.size > 0) {
-        events = events.filter((e) => selected.has(e.machineName));
-      } else if (excluded.size > 0) {
-        events = events.filter((e) => !excluded.has(e.machineName));
-      }
+      const sel = new Set<string>(); const exc = new Set<string>();
+      for (const [n, s] of filters.machineFilters) { if (s === 'select') sel.add(n); else if (s === 'exclude') exc.add(n); }
+      if (sel.size > 0) machineSelect = sel; else if (exc.size > 0) machineExclude = exc;
     }
 
-    // User filter
+    let userSelect: Set<string> | null = null;
+    let userExclude: Set<string> | null = null;
     if (filters.userFilters.size > 0) {
-      const selected = new Set<string>();
-      const excluded = new Set<string>();
-      for (const [name, state] of filters.userFilters) {
-        if (state === 'select') selected.add(name);
-        else if (state === 'exclude') excluded.add(name);
+      const sel = new Set<string>(); const exc = new Set<string>();
+      for (const [n, s] of filters.userFilters) { if (s === 'select') sel.add(n); else if (s === 'exclude') exc.add(n); }
+      if (sel.size > 0) userSelect = sel; else if (exc.size > 0) userExclude = exc;
+    }
+
+    const ipAllowed = filters.ipFilters.size > 0 ? new Set(resolveTriState(availableIps, filters.ipFilters)) : null;
+    const authAllowed = filters.authPackageFilters.size > 0 ? new Set(resolveTriState(availableAuthPackages, filters.authPackageFilters)) : null;
+    const procAllowed = filters.processFilters.size > 0 ? new Set(resolveTriState(availableProcesses, filters.processFilters)) : null;
+    const statusAllowed = filters.failureStatusFilters.size > 0 ? new Set(resolveTriState(availableFailureStatuses, filters.failureStatusFilters)) : null;
+
+    return rawEvents.filter((e) => {
+      // Machine (no parse needed — cheapest check first)
+      if (machineSelect && !machineSelect.has(e.machineName)) return false;
+      if (machineExclude && machineExclude.has(e.machineName)) return false;
+
+      const parsed = parseEventData(e); // WeakMap-cached
+
+      // Logon type
+      if (logonAllowed && parsed && parsed.logonType >= 0 && !logonAllowed.has(parsed.logonType)) return false;
+      // Machine accounts
+      if (filters.hideMachineAccounts && parsed?.targetUserName && isSystemAccount(parsed.targetUserName)) return false;
+      // User
+      if (userSelect || userExclude) {
+        const u = parsed?.targetUserName;
+        if (u) {
+          if (userSelect && !userSelect.has(u)) return false;
+          if (userExclude && userExclude.has(u)) return false;
+        }
       }
-      events = events.filter((e) => {
-        const parsed = parseEventData(e);
-        const userName = parsed?.targetUserName ?? '';
-        if (!userName) return true;
-        if (selected.size > 0) return selected.has(userName);
-        if (excluded.size > 0) return !excluded.has(userName);
-        return true;
-      });
-    }
+      // IP
+      if (ipAllowed && parsed?.ipAddress && parsed.ipAddress !== '-' && !ipAllowed.has(parsed.ipAddress)) return false;
+      // Auth package
+      if (authAllowed && parsed?.authPackage && !authAllowed.has(parsed.authPackage)) return false;
+      // Process
+      if (procAllowed && parsed?.processName && parsed.processName !== '-' && !procAllowed.has(parsed.processName)) return false;
+      // Failure status
+      if (statusAllowed && parsed) {
+        const hasStatus = (parsed.failureStatus && parsed.failureStatus !== '0x0') || (parsed.failureSubStatus && parsed.failureSubStatus !== '0x0');
+        if (hasStatus && !statusAllowed.has(parsed.failureStatus) && !statusAllowed.has(parsed.failureSubStatus)) return false;
+      }
+      // Elevated only — 4672 (special privileges assigned) always counts as elevated
+      if (filters.showElevatedOnly && !parsed?.elevatedToken && e.eventId !== 4672) return false;
 
-    // IP filter
-    if (filters.ipFilters.size > 0) {
-      const allowedIps = new Set(resolveTriState(availableIps, filters.ipFilters));
-      events = events.filter((e) => {
-        const parsed = parseEventData(e);
-        if (!parsed || !parsed.ipAddress || parsed.ipAddress === '-') return true;
-        return allowedIps.has(parsed.ipAddress);
-      });
-    }
-
-    // Auth package filter
-    if (filters.authPackageFilters.size > 0) {
-      const allowedPkgs = new Set(resolveTriState(availableAuthPackages, filters.authPackageFilters));
-      events = events.filter((e) => {
-        const parsed = parseEventData(e);
-        if (!parsed || !parsed.authPackage) return true;
-        return allowedPkgs.has(parsed.authPackage);
-      });
-    }
-
-    // Process filter
-    if (filters.processFilters.size > 0) {
-      const allowedProcs = new Set(resolveTriState(availableProcesses, filters.processFilters));
-      events = events.filter((e) => {
-        const parsed = parseEventData(e);
-        if (!parsed || !parsed.processName || parsed.processName === '-') return true;
-        return allowedProcs.has(parsed.processName);
-      });
-    }
-
-    // Failure status filter
-    if (filters.failureStatusFilters.size > 0) {
-      const allowedStatuses = new Set(resolveTriState(availableFailureStatuses, filters.failureStatusFilters));
-      events = events.filter((e) => {
-        const parsed = parseEventData(e);
-        if (!parsed) return true;
-        if ((!parsed.failureStatus || parsed.failureStatus === '0x0') && (!parsed.failureSubStatus || parsed.failureSubStatus === '0x0')) return true;
-        return allowedStatuses.has(parsed.failureStatus) || allowedStatuses.has(parsed.failureSubStatus);
-      });
-    }
-
-    // Elevated only
-    if (filters.showElevatedOnly) {
-      events = events.filter((e) => {
-        const parsed = parseEventData(e);
-        return parsed?.elevatedToken === true;
-      });
-    }
-
-    // Search — column-driven field:value + plain text
-    events = applySearch(events, debouncedSearch, COLUMNS, (e) => {
-      const sevInfo = sev.getEventSeverity(e);
-      const sevLabel = sevInfo ? sevInfo.severity : '';
-      return getExtraSearchFields(e, sevLabel);
+      return true;
     });
+  }, [rawEvents, filters, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
 
-    return events;
-  }, [rawEvents, filters, debouncedSearch, sev, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
+  /* ---- Search (separated — only reruns when search/detections change) ---- */
+  const filteredEvents = useMemo(
+    () => applySearch(dataFiltered, debouncedSearch, COLUMNS, (e) => {
+      const sevInfo = sev.getEventSeverity(e);
+      return getExtraSearchFields(e, sevInfo ? sevInfo.severity : '');
+    }),
+    [dataFiltered, debouncedSearch, sev],
+  );
 
   const toggleFilters = useCallback(() => setShowFilters((v) => !v), []);
 
   /* ---- Severity filter ---- */
   const severityFilteredEvents = useMemo(
-    () => sev.filterBySeverity(filteredEvents, filters.minSeverity),
-    [filteredEvents, sev, filters.minSeverity],
+    () => sev.filterBySeverity(filteredEvents, filters.minSeverity, filters.hideUndetected),
+    [filteredEvents, sev, filters.minSeverity, filters.hideUndetected],
   );
 
   /* ---- Render ---- */

@@ -248,7 +248,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     eventFilters: filters.eventFilters,
     timeStart: filters.timeStart,
     timeEnd: filters.timeEnd,
-  });
+  }, { enabled: visible });
 
   /* ---- Severity integration ---- */
   const { detections: sevDetections, filterBySeverity } = useSeverityIntegration(rawEvents, 'sysmon');
@@ -333,7 +333,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     }
 
     // Severity filter
-    events = filterBySeverity(events, filters.minSeverity);
+    events = filterBySeverity(events, filters.minSeverity, filters.hideUndetected);
 
     return buildAggregatedTree(events, hideSystem);
   }, [rawEvents, filters, availableProcesses, availableUsers, hideSystem, filterBySeverity]);

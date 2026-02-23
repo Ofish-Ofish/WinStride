@@ -55,7 +55,14 @@ export interface ModuleEventsResult {
   error: Error | null;
 }
 
-export function useModuleEvents(filters: ServerFilters): ModuleEventsResult {
+export interface ModuleEventsOptions {
+  /** Set false to pause fetching (e.g. when the view is hidden). Default true. */
+  enabled?: boolean;
+}
+
+export function useModuleEvents(filters: ServerFilters, options?: ModuleEventsOptions): ModuleEventsResult {
+  const enabled = options?.enabled ?? true;
+
   const odataFilter = useMemo(
     () => buildODataFilter(filters),
     [filters.logName, filters.allEventIds, filters.eventFilters, filters.timeStart, filters.timeEnd],
@@ -86,15 +93,18 @@ export function useModuleEvents(filters: ServerFilters): ModuleEventsResult {
       if (lastPage.totalCount !== null && fetched >= lastPage.totalCount) return undefined;
       return fetched;
     },
-    refetchInterval: 60_000,
+    enabled,
+    refetchInterval: enabled ? 60_000 : false,
+    retry: 2,
   });
 
-  // Auto-fetch next page when the previous one completes
+  // Auto-fetch next page when the previous one completes.
+  // Stop if there was an error to avoid infinite retry loops.
   useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage) {
+    if (enabled && hasNextPage && !isFetchingNextPage && !error) {
       fetchNextPage();
     }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [enabled, hasNextPage, isFetchingNextPage, fetchNextPage, error]);
 
   const events = useMemo(
     () => data?.pages.flatMap((p) => p.events) ?? [],

@@ -61,7 +61,7 @@ function parseLogons(events: WinEvent[]): LogonInfo[] {
   return results;
 }
 
-export default function SecurityMetrics() {
+export default function SecurityMetrics({ visible = true }: { visible?: boolean }) {
   const [timeStart, setTimeStart] = useState(() => new Date(Date.now() - 24 * 3600_000).toISOString());
   const [timeEnd, setTimeEnd] = useState('');
 
@@ -80,7 +80,7 @@ export default function SecurityMetrics() {
     eventFilters: filters.eventFilters,
     timeStart: filters.timeStart,
     timeEnd: filters.timeEnd,
-  });
+  }, { enabled: visible });
 
   const logons = useMemo(() => {
     if (!events) return [];

@@ -12,7 +12,7 @@ export default function SecurityDashboard() {
     <div className="flex flex-col flex-1 min-h-0">
       <h2 className="text-xl font-semibold mb-4">Security Events</h2>
       <div className={viewMode === 'dashboard' ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
-        <SecurityMetrics />
+        <SecurityMetrics visible={viewMode === 'dashboard'} />
       </div>
       <div className={viewMode === 'list' ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
         <EventList visible={viewMode === 'list'} />
@@ -21,7 +21,7 @@ export default function SecurityDashboard() {
         <LogonGraph visible={viewMode === 'graph'} />
       </div>
       <div className={viewMode === 'timeline' ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
-        <TimelineView />
+        <TimelineView visible={viewMode === 'timeline'} />
       </div>
     </div>
   );

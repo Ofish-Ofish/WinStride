@@ -92,7 +92,7 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
     eventFilters: filters.eventFilters,
     timeStart: filters.timeStart,
     timeEnd: filters.timeEnd,
-  });
+  }, { enabled: visible });
 
   const sev = useSeverityIntegration(rawEvents, 'sysmon');
 
@@ -119,79 +119,64 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
     };
   }, [rawEvents]);
 
-  /* ---- Client-side filtering ---- */
-  const filteredEvents = useMemo(() => {
+  /* ---- Client-side filtering (single pass, no sev dependency) ---- */
+  const dataFiltered = useMemo(() => {
     if (rawEvents.length === 0) return [];
-    let events = rawEvents;
 
-    // Machine filter
+    // Pre-compute filter sets
+    let machineSelect: Set<string> | null = null;
+    let machineExclude: Set<string> | null = null;
     if (filters.machineFilters.size > 0) {
-      const selected = new Set<string>();
-      const excluded = new Set<string>();
-      for (const [name, state] of filters.machineFilters) {
-        if (state === 'select') selected.add(name);
-        else if (state === 'exclude') excluded.add(name);
-      }
-      if (selected.size > 0) {
-        events = events.filter((e) => selected.has(e.machineName));
-      } else if (excluded.size > 0) {
-        events = events.filter((e) => !excluded.has(e.machineName));
-      }
+      const sel = new Set<string>(); const exc = new Set<string>();
+      for (const [n, s] of filters.machineFilters) { if (s === 'select') sel.add(n); else if (s === 'exclude') exc.add(n); }
+      if (sel.size > 0) machineSelect = sel; else if (exc.size > 0) machineExclude = exc;
     }
 
-    // Process filter
-    if (filters.processFilters.size > 0) {
-      const allowed = new Set(resolveTriState(availableProcesses, filters.processFilters));
-      events = events.filter((e) => {
-        const proc = parseProcessCreate(e);
+    const procAllowed = filters.processFilters.size > 0 ? new Set(resolveTriState(availableProcesses, filters.processFilters)) : null;
+    const integrityAllowed = filters.integrityFilters.size > 0 ? new Set(resolveTriState(['Low', 'Medium', 'High', 'System'], filters.integrityFilters)) : null;
+    const userAllowed = filters.userFilters.size > 0 ? new Set(resolveTriState(availableUsers, filters.userFilters)) : null;
+    const needsParse = procAllowed || integrityAllowed || userAllowed;
+
+    return rawEvents.filter((e) => {
+      // Machine (cheapest check first)
+      if (machineSelect && !machineSelect.has(e.machineName)) return false;
+      if (machineExclude && machineExclude.has(e.machineName)) return false;
+
+      if (needsParse) {
+        const proc = parseProcessCreate(e);  // WeakMap-cached
         const net = parseNetworkConnect(e);
         const file = parseFileCreate(e);
-        const imageName = proc?.imageName ?? net?.imageName ?? file?.imageName;
-        if (!imageName) return true;
-        return allowed.has(imageName);
-      });
-    }
 
-    // Integrity filter (Event 1 only)
-    if (filters.integrityFilters.size > 0) {
-      const allLevels = ['Low', 'Medium', 'High', 'System'];
-      const allowed = new Set(resolveTriState(allLevels, filters.integrityFilters));
-      events = events.filter((e) => {
-        if (e.eventId !== 1) return true;
-        const proc = parseProcessCreate(e);
-        if (!proc?.integrityLevel) return true;
-        return allowed.has(proc.integrityLevel);
-      });
-    }
+        if (procAllowed) {
+          const img = proc?.imageName ?? net?.imageName ?? file?.imageName;
+          if (img && !procAllowed.has(img)) return false;
+        }
+        if (integrityAllowed && e.eventId === 1 && proc?.integrityLevel && !integrityAllowed.has(proc.integrityLevel)) return false;
+        if (userAllowed) {
+          const user = proc?.user ?? net?.user ?? file?.user;
+          if (user && !userAllowed.has(user)) return false;
+        }
+      }
 
-    // User filter
-    if (filters.userFilters.size > 0) {
-      const allowed = new Set(resolveTriState(availableUsers, filters.userFilters));
-      events = events.filter((e) => {
-        const proc = parseProcessCreate(e);
-        const net = parseNetworkConnect(e);
-        const file = parseFileCreate(e);
-        const user = proc?.user ?? net?.user ?? file?.user;
-        if (!user) return true;
-        return allowed.has(user);
-      });
-    }
+      return true;
+    });
+  }, [rawEvents, filters, availableProcesses, availableUsers]);
 
-    // Search — column-driven field:value + plain text
-    events = applySearch(events, debouncedSearch, COLUMNS, (e) => {
+  /* ---- Search (separated — only reruns when search/detections change) ---- */
+  const filteredEvents = useMemo(
+    () => applySearch(dataFiltered, debouncedSearch, COLUMNS, (e) => {
       const sevInfo = sev.getEventSeverity(e);
       return getExtraSearchFields(e, sevInfo ? sevInfo.severity : '');
-    });
-
-    return events;
-  }, [rawEvents, filters, debouncedSearch, sev, availableProcesses, availableUsers]);
+    }),
+    [dataFiltered, debouncedSearch, sev],
+  );
 
   const toggleFilters = useCallback(() => setShowFilters((v) => !v), []);
 
   /* ---- Severity filter ---- */
   const severityFilteredEvents = useMemo(
-    () => sev.filterBySeverity(filteredEvents, filters.minSeverity),
-    [filteredEvents, sev, filters.minSeverity],
+    () => sev.filterBySeverity(filteredEvents, filters.minSeverity, filters.hideUndetected),
+    [filteredEvents, sev, filters.minSeverity, filters.hideUndetected],
   );
 
   /* ---- Render ---- */

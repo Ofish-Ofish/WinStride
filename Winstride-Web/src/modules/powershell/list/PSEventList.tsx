@@ -105,7 +105,7 @@ export default function PSEventList({ visible }: { visible: boolean }) {
     eventFilters: filters.eventFilters,
     timeStart: filters.timeStart,
     timeEnd: filters.timeEnd,
-  });
+  }, { enabled: visible });
 
   const sev = useSeverityIntegration(rawEvents, 'powershell');
 
@@ -117,24 +117,20 @@ export default function PSEventList({ visible }: { visible: boolean }) {
     return [...machines].sort();
   }, [rawEvents]);
 
-  /* ---- Client-side filtering ---- */
-  const filteredEvents = useMemo(() => {
+  /* ---- Client-side filtering (no sev dependency) ---- */
+  const dataFiltered = useMemo(() => {
     if (!rawEvents) return [];
     let events = rawEvents;
 
     // Machine filter
     if (filters.machineFilters.size > 0) {
-      const selected = new Set<string>();
-      const excluded = new Set<string>();
-      for (const [name, state] of filters.machineFilters) {
-        if (state === 'select') selected.add(name);
-        else if (state === 'exclude') excluded.add(name);
-      }
-      if (selected.size > 0) {
-        events = events.filter((e) => selected.has(e.machineName));
-      } else if (excluded.size > 0) {
-        events = events.filter((e) => !excluded.has(e.machineName));
-      }
+      let machineSelect: Set<string> | null = null;
+      let machineExclude: Set<string> | null = null;
+      const sel = new Set<string>(); const exc = new Set<string>();
+      for (const [n, s] of filters.machineFilters) { if (s === 'select') sel.add(n); else if (s === 'exclude') exc.add(n); }
+      if (sel.size > 0) machineSelect = sel; else if (exc.size > 0) machineExclude = exc;
+      if (machineSelect) events = events.filter((e) => machineSelect!.has(e.machineName));
+      else if (machineExclude) events = events.filter((e) => !machineExclude!.has(e.machineName));
     }
 
     // Level filter
@@ -142,21 +138,24 @@ export default function PSEventList({ visible }: { visible: boolean }) {
       events = events.filter((e) => e.level === 'Warning');
     }
 
-    // Search — column-driven field:value + plain text
-    events = applySearch(events, debouncedSearch, COLUMNS, (e) => {
+    return events;
+  }, [rawEvents, filters]);
+
+  /* ---- Search (separated — only reruns when search/detections change) ---- */
+  const filteredEvents = useMemo(
+    () => applySearch(dataFiltered, debouncedSearch, COLUMNS, (e) => {
       const sevInfo = sev.getEventSeverity(e);
       return getExtraSearchFields(e, sevInfo ? sevInfo.severity : '');
-    });
-
-    return events;
-  }, [rawEvents, filters, debouncedSearch, sev]);
+    }),
+    [dataFiltered, debouncedSearch, sev],
+  );
 
   const toggleFilters = useCallback(() => setShowFilters((v) => !v), []);
 
   /* ---- Severity filter ---- */
   const severityFilteredEvents = useMemo(
-    () => sev.filterBySeverity(filteredEvents, filters.minSeverity),
-    [filteredEvents, sev, filters.minSeverity],
+    () => sev.filterBySeverity(filteredEvents, filters.minSeverity, filters.hideUndetected),
+    [filteredEvents, sev, filters.minSeverity, filters.hideUndetected],
   );
 
   /* ---- Render ---- */
