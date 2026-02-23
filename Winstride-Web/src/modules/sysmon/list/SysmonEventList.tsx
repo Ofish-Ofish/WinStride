@@ -1,10 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchEvents } from '../../../api/client';
 import { DEFAULT_SYSMON_FILTERS, type SysmonFilters } from '../shared/filterTypes';
 import { loadSysmonFilters, saveSysmonFilters } from '../shared/filterSerializer';
-import { buildSysmonFilter } from '../shared/buildSysmonFilter';
-import { SYSMON_EVENT_LABELS, EVENT_COLORS, INTEGRITY_COLORS } from '../shared/eventMeta';
+import { SYSMON_EVENT_LABELS, SYSMON_EVENT_IDS, EVENT_COLORS, INTEGRITY_COLORS } from '../shared/eventMeta';
+import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
 import { parseProcessCreate, parseNetworkConnect, parseFileCreate } from '../shared/parseSysmonEvent';
 import SysmonFilterPanel from '../SysmonFilterPanel';
 import SysmonDetailRow from './SysmonDetailRow';
@@ -87,23 +85,13 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
     return () => clearTimeout(t);
   }, [search]);
 
-  /* ---- OData filter ---- */
-  const odataFilter = useMemo(
-    () => buildSysmonFilter(filters),
-    [filters.eventFilters, filters.timeStart, filters.timeEnd],
-  );
-
   /* ---- Data fetch ---- */
-  const { data: rawEvents, isLoading, error } = useQuery<WinEvent[]>({
-    queryKey: ['events', 'sysmon-list', odataFilter],
-    queryFn: () => fetchEvents({
-      $filter: odataFilter,
-      $select: 'id,eventId,level,machineName,timeCreated,eventData',
-      $orderby: 'timeCreated desc',
-      $top: '100',
-    }),
-    refetchInterval: 30_000,
-    enabled: visible,
+  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
+    logName: 'Microsoft-Windows-Sysmon/Operational',
+    allEventIds: SYSMON_EVENT_IDS,
+    eventFilters: filters.eventFilters,
+    timeStart: filters.timeStart,
+    timeEnd: filters.timeEnd,
   });
 
   const sev = useSeverityIntegration(rawEvents, 'sysmon');
@@ -212,6 +200,9 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
       visible={visible}
       isLoading={isLoading}
       error={!!error}
+      loadedCount={loadedCount}
+      totalCount={totalCount}
+      isComplete={isComplete}
       columns={COLUMNS}
       columnsStorageKey="winstride:sysmonColumns"
       searchPlaceholder="Search... (process:cmd.exe ip:10.0 user:admin)"
@@ -233,7 +224,7 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
       showFilters={showFilters}
       onToggleFilters={toggleFilters}
       filteredEvents={severityFilteredEvents}
-      rawCount={rawEvents?.length ?? 0}
+      rawCount={rawEvents.length}
       search={search}
       onSearchChange={setSearch}
       jsonMapper={sysmonJsonMapper}
