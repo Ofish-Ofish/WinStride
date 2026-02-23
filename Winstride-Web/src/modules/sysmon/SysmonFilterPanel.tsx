@@ -59,6 +59,8 @@ export default function SysmonFilterPanel({
       <SeverityFilter
         value={filters.minSeverity}
         onChange={(v) => updateFilter('minSeverity', v)}
+        hideUndetected={filters.hideUndetected}
+        onHideUndetectedChange={(v) => updateFilter('hideUndetected', v)}
       />
 
       <div className="h-px bg-[#21262d]" />

@@ -10,6 +10,7 @@ export interface PSFilters {
   machineFilters: Map<string, FilterState>;
   levelFilter: 'all' | 'warning-only';
   minSeverity: Severity | null;
+  hideUndetected: boolean;
 }
 
 export function getDefaultPSFilters(): PSFilters {
@@ -20,6 +21,7 @@ export function getDefaultPSFilters(): PSFilters {
     machineFilters: new Map(),
     levelFilter: 'all',
     minSeverity: 'low',
+    hideUndetected: false,
   };
 }
 

@@ -9,6 +9,7 @@ interface SerializedSysmonFilters {
   integrityFilters: [string, FilterState][];
   userFilters: [string, FilterState][];
   minSeverity?: string | null;
+  hideUndetected?: boolean;
 }
 
 const STORAGE_KEY = 'winstride:sysmonFilters';
@@ -23,6 +24,7 @@ function serialize(f: SysmonFilters): SerializedSysmonFilters {
     integrityFilters: [...f.integrityFilters.entries()],
     userFilters: [...f.userFilters.entries()],
     minSeverity: f.minSeverity,
+    hideUndetected: f.hideUndetected,
   };
 }
 
@@ -36,6 +38,7 @@ function deserialize(s: SerializedSysmonFilters): SysmonFilters {
     integrityFilters: new Map(s.integrityFilters ?? []),
     userFilters: new Map(s.userFilters ?? []),
     minSeverity: (s.minSeverity as SysmonFilters['minSeverity']) ?? 'low',
+    hideUndetected: s.hideUndetected ?? false,
   };
 }
 

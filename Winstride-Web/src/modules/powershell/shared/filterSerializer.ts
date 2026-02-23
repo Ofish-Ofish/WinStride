@@ -7,6 +7,7 @@ interface SerializedPSFilters {
   machineFilters: [string, FilterState][];
   levelFilter: 'all' | 'warning-only';
   minSeverity?: string | null;
+  hideUndetected?: boolean;
 }
 
 const STORAGE_KEY = 'winstride:psFilters';
@@ -19,6 +20,7 @@ function serialize(f: PSFilters): SerializedPSFilters {
     machineFilters: [...f.machineFilters.entries()],
     levelFilter: f.levelFilter,
     minSeverity: f.minSeverity,
+    hideUndetected: f.hideUndetected,
   };
 }
 
@@ -30,6 +32,7 @@ function deserialize(s: SerializedPSFilters): PSFilters {
     machineFilters: new Map(s.machineFilters),
     levelFilter: s.levelFilter ?? 'all',
     minSeverity: (s.minSeverity as PSFilters['minSeverity']) ?? 'low',
+    hideUndetected: s.hideUndetected ?? false,
   };
 }
 

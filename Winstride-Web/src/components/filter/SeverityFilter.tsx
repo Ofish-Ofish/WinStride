@@ -7,9 +7,11 @@ const LEVELS: Severity[] = ['info', 'low', 'medium', 'high', 'critical'];
 interface Props {
   value: Severity | null;
   onChange: (value: Severity | null) => void;
+  hideUndetected: boolean;
+  onHideUndetectedChange: (value: boolean) => void;
 }
 
-export default function SeverityFilter({ value, onChange }: Props) {
+export default function SeverityFilter({ value, onChange, hideUndetected, onHideUndetectedChange }: Props) {
   return (
     <CollapsibleSection
       title="Min Risk Level"
@@ -40,6 +42,15 @@ export default function SeverityFilter({ value, onChange }: Props) {
           );
         })}
       </div>
+      <label className="flex items-center gap-2 mt-2 cursor-pointer text-[11px] text-gray-300">
+        <input
+          type="checkbox"
+          checked={hideUndetected}
+          onChange={(e) => onHideUndetectedChange(e.target.checked)}
+          className="accent-[#58a6ff]"
+        />
+        Hide undetected events
+      </label>
     </CollapsibleSection>
   );
 }

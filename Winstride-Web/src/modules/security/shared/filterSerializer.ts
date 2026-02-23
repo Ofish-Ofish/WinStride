@@ -20,6 +20,7 @@ export interface SerializedGraphFilters {
   activityMax: number;    // Infinity stored as null in JSON
   hideMachineAccounts: boolean;
   minSeverity?: string | null;
+  hideUndetected?: boolean;
 }
 
 export interface FilterExport {
@@ -50,6 +51,7 @@ export function serializeFilters(f: GraphFilters): SerializedGraphFilters {
     activityMax: f.activityMax === Infinity ? (null as unknown as number) : f.activityMax,
     hideMachineAccounts: f.hideMachineAccounts,
     minSeverity: f.minSeverity,
+    hideUndetected: f.hideUndetected,
   };
 }
 
@@ -70,6 +72,7 @@ export function deserializeFilters(s: SerializedGraphFilters): GraphFilters {
     activityMax: s.activityMax == null ? Infinity : s.activityMax,
     hideMachineAccounts: s.hideMachineAccounts,
     minSeverity: (s.minSeverity as GraphFilters['minSeverity']) ?? 'low',
+    hideUndetected: s.hideUndetected ?? false,
   };
 }
 

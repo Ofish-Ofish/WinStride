@@ -12,6 +12,7 @@ export interface SysmonFilters {
   integrityFilters: Map<string, FilterState>;
   userFilters: Map<string, FilterState>;
   minSeverity: Severity | null;
+  hideUndetected: boolean;
 }
 
 export function getDefaultSysmonFilters(): SysmonFilters {
@@ -24,6 +25,7 @@ export function getDefaultSysmonFilters(): SysmonFilters {
     integrityFilters: new Map(),
     userFilters: new Map(),
     minSeverity: 'low',
+    hideUndetected: false,
   };
 }
 

@@ -27,6 +27,7 @@ export interface GraphFilters {
   activityMax: number; // default Infinity (no upper cap)
   hideMachineAccounts: boolean;
   minSeverity: Severity | null; // null = show all
+  hideUndetected: boolean;      // hide events with no Sigma match
 }
 
 export function getDefaultFilters(): GraphFilters {
@@ -46,6 +47,7 @@ export function getDefaultFilters(): GraphFilters {
     activityMax: Infinity,
     hideMachineAccounts: true,
     minSeverity: 'low',
+    hideUndetected: false,
   };
 }
 
