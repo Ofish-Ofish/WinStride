@@ -98,7 +98,7 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
 
   /* ---- Available values for filter panel ---- */
   const { availableMachines, availableProcesses, availableUsers } = useMemo(() => {
-    if (!rawEvents) return { availableMachines: [], availableProcesses: [], availableUsers: [] };
+    if (rawEvents.length === 0) return { availableMachines: [], availableProcesses: [], availableUsers: [] };
     const machines = new Set<string>();
     const processes = new Set<string>();
     const users = new Set<string>();
@@ -121,7 +121,7 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
 
   /* ---- Client-side filtering ---- */
   const filteredEvents = useMemo(() => {
-    if (!rawEvents) return [];
+    if (rawEvents.length === 0) return [];
     let events = rawEvents;
 
     // Machine filter
