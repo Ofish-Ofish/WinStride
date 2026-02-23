@@ -347,8 +347,8 @@ export interface SeverityIntegration {
   detections: DetectionMap;
   /** Pass to VirtualizedEventList.getSortValue */
   getSortValue: (columnKey: string, event: WinEvent) => string | number | undefined;
-  /** Filter events by minimum severity — returns input unchanged if minSeverity is null */
-  filterBySeverity: (events: WinEvent[], minSeverity: Severity | null, hideUndetected?: boolean) => WinEvent[];
+  /** Filter events by selected severity levels (Set includes 'undetected' for events with no detections) */
+  filterBySeverity: (events: WinEvent[], severityFilter: Set<Severity | 'undetected'>) => WinEvent[];
   /** Get severity info for an event (for cell rendering) */
   getEventSeverity: (event: WinEvent) => { severity: Severity; detections: Detection[] } | null;
 }
@@ -367,13 +367,14 @@ export function useSeverityIntegration(events: WinEvent[] | undefined, module: M
   );
 
   const filterBySeverity = useCallback(
-    (evts: WinEvent[], minSeverity: Severity | null, hideUndetected = false) => {
-      if (!minSeverity && !hideUndetected) return evts;
-      const minRank = minSeverity ? SEVERITY_RANK[minSeverity] : 0;
+    (evts: WinEvent[], severityFilter: Set<Severity | 'undetected'>) => {
+      // 6 = all 5 severities + undetected — nothing filtered
+      if (severityFilter.size >= 6) return evts;
+      const showUndetected = severityFilter.has('undetected');
       return evts.filter((e) => {
         const dets = detections.byEventId.get(e.id);
-        if (!dets || dets.length === 0) return !hideUndetected;
-        return SEVERITY_RANK[maxSeverity(dets)!] >= minRank;
+        if (!dets || dets.length === 0) return showUndetected;
+        return severityFilter.has(maxSeverity(dets)!);
       });
     },
     [detections],

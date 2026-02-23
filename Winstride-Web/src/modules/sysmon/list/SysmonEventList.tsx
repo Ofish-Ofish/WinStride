@@ -177,8 +177,8 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
 
   /* ---- Severity filter ---- */
   const severityFilteredEvents = useMemo(
-    () => sev.filterBySeverity(filteredEvents, filters.minSeverity, filters.hideUndetected),
-    [filteredEvents, sev, filters.minSeverity, filters.hideUndetected],
+    () => sev.filterBySeverity(filteredEvents, filters.severityFilter),
+    [filteredEvents, sev, filters.severityFilter],
   );
 
   /* ---- Render ---- */

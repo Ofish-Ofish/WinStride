@@ -174,8 +174,8 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
   // Step 0: apply severity filter to raw events before graph aggregation
   const filteredByRisk = useMemo(() => {
     if (!events) return [];
-    return filterBySeverity(events, filters.minSeverity, filters.hideUndetected);
-  }, [events, filterBySeverity, filters.minSeverity, filters.hideUndetected]);
+    return filterBySeverity(events, filters.severityFilter);
+  }, [events, filterBySeverity, filters.severityFilter]);
 
   // Step 1: transform raw events into nodes & edges
   const fullGraph = useMemo(() => {

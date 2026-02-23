@@ -46,12 +46,10 @@ export default function PSFilterPanel({ filters, onFiltersChange, availableMachi
 
       <div className="h-px bg-[#21262d]" />
 
-      {/* Min Risk Level */}
+      {/* Risk Level */}
       <SeverityFilter
-        value={filters.minSeverity}
-        onChange={(v) => updateFilter('minSeverity', v)}
-        hideUndetected={filters.hideUndetected}
-        onHideUndetectedChange={(v) => updateFilter('hideUndetected', v)}
+        value={filters.severityFilter}
+        onChange={(v) => updateFilter('severityFilter', v)}
       />
 
       <div className="h-px bg-[#21262d]" />

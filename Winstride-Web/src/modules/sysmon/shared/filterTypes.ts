@@ -11,8 +11,7 @@ export interface SysmonFilters {
   processFilters: Map<string, FilterState>;
   integrityFilters: Map<string, FilterState>;
   userFilters: Map<string, FilterState>;
-  minSeverity: Severity | null;
-  hideUndetected: boolean;
+  severityFilter: Set<Severity | 'undetected'>;
 }
 
 export function getDefaultSysmonFilters(): SysmonFilters {
@@ -24,8 +23,7 @@ export function getDefaultSysmonFilters(): SysmonFilters {
     processFilters: new Map(),
     integrityFilters: new Map(),
     userFilters: new Map(),
-    minSeverity: 'low',
-    hideUndetected: false,
+    severityFilter: new Set<Severity | 'undetected'>(['undetected', 'low', 'medium', 'high', 'critical']),
   };
 }
 

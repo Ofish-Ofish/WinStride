@@ -2,55 +2,71 @@ import type { Severity } from '../../shared/detection/rules';
 import { SEVERITY_COLORS, SEVERITY_LABELS } from '../../shared/detection/engine';
 import CollapsibleSection from './CollapsibleSection';
 
-const LEVELS: Severity[] = ['info', 'low', 'medium', 'high', 'critical'];
+export type SeverityFilterValue = Set<Severity | 'undetected'>;
+
+const LEVELS: (Severity | 'undetected')[] = ['undetected', 'info', 'low', 'medium', 'high', 'critical'];
+
+const DISPLAY: Record<string, string> = { ...SEVERITY_LABELS, undetected: 'None' };
 
 interface Props {
-  value: Severity | null;
-  onChange: (value: Severity | null) => void;
-  hideUndetected: boolean;
-  onHideUndetectedChange: (value: boolean) => void;
+  value: SeverityFilterValue;
+  onChange: (value: SeverityFilterValue) => void;
 }
 
-export default function SeverityFilter({ value, onChange, hideUndetected, onHideUndetectedChange }: Props) {
+export default function SeverityFilter({ value, onChange }: Props) {
+  const toggle = (level: Severity | 'undetected') => {
+    const next = new Set(value);
+    if (next.has(level)) next.delete(level); else next.add(level);
+    onChange(next);
+  };
+
+  const activeCount = value.size;
+
   return (
     <CollapsibleSection
-      title="Min Risk Level"
+      title="Risk Level"
       right={
-        value
-          ? <span className={`text-[11px] font-semibold ${SEVERITY_COLORS[value].text}`}>
-              {SEVERITY_LABELS[value]}+
-            </span>
-          : <span className="text-[11px] text-gray-500">All</span>
+        activeCount === LEVELS.length
+          ? <span className="text-[11px] text-gray-500">All</span>
+          : activeCount === 0
+            ? <span className="text-[11px] text-gray-500">None</span>
+            : <span className="text-[11px] text-gray-200">{activeCount} selected</span>
       }
     >
       <div className="flex gap-1">
-        {LEVELS.map((sev) => {
-          const active = value === sev;
-          const colors = SEVERITY_COLORS[sev];
+        {LEVELS.map((level) => {
+          const active = value.has(level);
+          if (level === 'undetected') {
+            return (
+              <button
+                key={level}
+                onClick={() => toggle(level)}
+                className={`flex-1 py-1 text-[10px] font-semibold rounded transition-all ${
+                  active
+                    ? 'bg-[#21262d] text-gray-200 ring-1 ring-gray-500/30'
+                    : 'text-gray-500 hover:text-gray-300 bg-[#161b22] hover:bg-[#1c2128] line-through'
+                }`}
+              >
+                {DISPLAY[level]}
+              </button>
+            );
+          }
+          const colors = SEVERITY_COLORS[level];
           return (
             <button
-              key={sev}
-              onClick={() => onChange(active ? null : sev)}
+              key={level}
+              onClick={() => toggle(level)}
               className={`flex-1 py-1 text-[10px] font-semibold rounded transition-all ${
                 active
                   ? `${colors.bg} ${colors.text} ring-1 ${colors.border.replace('border-', 'ring-')}`
-                  : 'text-gray-400 hover:text-gray-200 bg-[#161b22] hover:bg-[#1c2128]'
+                  : 'text-gray-500 hover:text-gray-300 bg-[#161b22] hover:bg-[#1c2128] line-through'
               }`}
             >
-              {SEVERITY_LABELS[sev]}
+              {DISPLAY[level]}
             </button>
           );
         })}
       </div>
-      <label className="flex items-center gap-2 mt-2 cursor-pointer text-[11px] text-gray-300">
-        <input
-          type="checkbox"
-          checked={hideUndetected}
-          onChange={(e) => onHideUndetectedChange(e.target.checked)}
-          className="accent-[#58a6ff]"
-        />
-        Hide undetected events
-      </label>
     </CollapsibleSection>
   );
 }

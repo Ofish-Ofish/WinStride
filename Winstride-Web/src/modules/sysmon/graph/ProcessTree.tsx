@@ -28,7 +28,7 @@ const GRAPH_DEFAULT_FILTERS: SysmonFilters = {
   processFilters: new Map(),
   integrityFilters: new Map(),
   userFilters: new Map(),
-  minSeverity: 'low',
+  severityFilter: new Set(['undetected', 'low', 'medium', 'high', 'critical'] as const),
 };
 
 /* ------------------------------------------------------------------ */
@@ -333,7 +333,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     }
 
     // Severity filter
-    events = filterBySeverity(events, filters.minSeverity, filters.hideUndetected);
+    events = filterBySeverity(events, filters.severityFilter);
 
     return buildAggregatedTree(events, hideSystem);
   }, [rawEvents, filters, availableProcesses, availableUsers, hideSystem, filterBySeverity]);

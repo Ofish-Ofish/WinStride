@@ -9,8 +9,7 @@ export interface PSFilters {
   timeEnd: string;
   machineFilters: Map<string, FilterState>;
   levelFilter: 'all' | 'warning-only';
-  minSeverity: Severity | null;
-  hideUndetected: boolean;
+  severityFilter: Set<Severity | 'undetected'>;
 }
 
 export function getDefaultPSFilters(): PSFilters {
@@ -20,8 +19,7 @@ export function getDefaultPSFilters(): PSFilters {
     timeEnd: '',
     machineFilters: new Map(),
     levelFilter: 'all',
-    minSeverity: 'low',
-    hideUndetected: false,
+    severityFilter: new Set<Severity | 'undetected'>(['undetected', 'low', 'medium', 'high', 'critical']),
   };
 }
 
