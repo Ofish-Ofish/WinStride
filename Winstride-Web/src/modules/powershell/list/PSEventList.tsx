@@ -1,10 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchEvents } from '../../../api/client';
 import { DEFAULT_PS_FILTERS, type PSFilters } from '../shared/filterTypes';
 import { loadPSFilters, savePSFilters } from '../shared/filterSerializer';
-import { buildPSFilter } from '../shared/buildPSFilter';
-import { PS_EVENT_LABELS } from '../shared/eventMeta';
+import { PS_EVENT_LABELS, PS_EVENT_IDS } from '../shared/eventMeta';
+import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
 import { parseScriptBlock, parseCommandExecution } from '../shared/parsePSEvent';
 import PSFilterPanel from '../PSFilterPanel';
 import PSDetailRow from './PSDetailRow';
@@ -100,23 +98,13 @@ export default function PSEventList({ visible }: { visible: boolean }) {
     return () => clearTimeout(t);
   }, [search]);
 
-  /* ---- OData filter ---- */
-  const odataFilter = useMemo(
-    () => buildPSFilter(filters),
-    [filters.eventFilters, filters.timeStart, filters.timeEnd],
-  );
-
   /* ---- Data fetch ---- */
-  const { data: rawEvents, isLoading, error } = useQuery<WinEvent[]>({
-    queryKey: ['events', 'powershell-list', odataFilter],
-    queryFn: () => fetchEvents({
-      $filter: odataFilter,
-      $select: 'id,eventId,level,machineName,timeCreated,eventData',
-      $orderby: 'timeCreated desc',
-      $top: '100',
-    }),
-    refetchInterval: 30_000,
-    enabled: visible,
+  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
+    logName: 'Microsoft-Windows-PowerShell/Operational',
+    allEventIds: PS_EVENT_IDS,
+    eventFilters: filters.eventFilters,
+    timeStart: filters.timeStart,
+    timeEnd: filters.timeEnd,
   });
 
   const sev = useSeverityIntegration(rawEvents, 'powershell');
@@ -177,6 +165,9 @@ export default function PSEventList({ visible }: { visible: boolean }) {
       visible={visible}
       isLoading={isLoading}
       error={!!error}
+      loadedCount={loadedCount}
+      totalCount={totalCount}
+      isComplete={isComplete}
       columns={COLUMNS}
       columnsStorageKey="winstride:psColumns"
       searchPlaceholder="Search... (command:Invoke path:temp level:Warning)"
