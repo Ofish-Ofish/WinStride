@@ -1,0 +1,21 @@
+title: Zerologon Exploit (CVE-2020-1472)
+id: a0000001-0000-0000-0000-000000000053
+name: zerologon
+status: stable
+description: Computer account password changed by ANONYMOUS LOGON — signature of the Zerologon exploit setting a DC machine account password to empty.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.privilege-escalation
+    - attack.t1068
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4742
+        SubjectUserName: 'ANONYMOUS LOGON'
+    target_machine:
+        TargetUserName|endswith: '$'
+    condition: selection and target_machine
+level: critical

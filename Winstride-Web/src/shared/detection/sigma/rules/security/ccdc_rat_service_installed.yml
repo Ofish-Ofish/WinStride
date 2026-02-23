@@ -1,0 +1,32 @@
+title: Remote Access Tool Service Installed
+id: a0000001-0000-0000-0000-000000000036
+name: rat_service_installed
+status: stable
+description: A service matching a known remote access tool was installed. Red teams install RATs as persistence even if their C2 implants are removed.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1219
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4697
+    rat_names:
+        ServiceName|contains:
+            - 'AnyDesk'
+            - 'TeamViewer'
+            - 'ScreenConnect'
+            - 'RustDesk'
+            - 'Atera'
+            - 'LogMeIn'
+            - 'TightVNC'
+            - 'vncserver'
+            - 'AmmyyAdmin'
+            - 'GoToAssist'
+            - 'Splashtop'
+            - 'RManService'
+    condition: selection and 1 of rat_names
+level: high

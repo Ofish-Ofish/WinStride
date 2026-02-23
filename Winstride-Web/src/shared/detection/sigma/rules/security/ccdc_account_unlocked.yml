@@ -1,0 +1,18 @@
+title: Account Unlocked
+id: a0000001-0000-0000-0000-000000000062
+name: account_unlocked
+status: stable
+description: A locked account was manually unlocked. If red team triggers lockouts and a compromised admin unlocks them, this is a useful correlation indicator.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1098
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4767
+    condition: selection
+level: low

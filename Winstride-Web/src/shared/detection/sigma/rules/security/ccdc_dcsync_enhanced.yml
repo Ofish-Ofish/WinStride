@@ -1,0 +1,28 @@
+title: DCSync Attack - Enhanced (All Replication GUIDs)
+id: a0000001-0000-0000-0000-000000000055
+name: dcsync_enhanced
+status: stable
+description: Directory replication requested by a non-machine account. Enhanced to detect all three replication GUIDs (Get-Changes, Get-Changes-All, Get-Changes-In-Filtered-Set).
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.credential-access
+    - attack.t1003.006
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4662
+        AccessMask|contains: '0x100'
+    replication_guids:
+        Properties|contains:
+            - '1131f6aa-9c07-11d1-f79f-00c04fc2dcd2'
+            - '1131f6ad-9c07-11d1-f79f-00c04fc2dcd2'
+            - '89e95b76-444d-4c62-991a-0facbeda640c'
+    filter_machine:
+        SubjectUserName|endswith: '$'
+    filter_msol:
+        SubjectUserName|startswith: 'MSOL_'
+    condition: selection and 1 of replication_guids and not filter_machine and not filter_msol
+level: critical

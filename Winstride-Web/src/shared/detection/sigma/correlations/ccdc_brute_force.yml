@@ -1,0 +1,17 @@
+title: Brute Force - Multiple Failed Logons (Same User)
+id: c0000001-0000-0000-0000-000000000001
+status: stable
+description: 10 or more failed logon attempts against the same username within 5 minutes indicating brute force.
+tags:
+    - attack.credential-access
+    - attack.t1110.001
+level: high
+correlation:
+    type: event_count
+    rules:
+        - a0000001-0000-0000-0000-000000000022
+    group-by:
+        - TargetUserName
+    timespan: 5m
+    condition:
+        gte: 10

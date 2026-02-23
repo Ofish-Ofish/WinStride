@@ -1,0 +1,18 @@
+title: AD Certificate Services - Certificate Issued
+id: a0000001-0000-0000-0000-000000000057
+name: adcs_cert_issued
+status: stable
+description: A certificate was issued by AD Certificate Services. Monitor for certificates issued to unexpected principals — indicates ESC1 or ESC8 ADCS abuse.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.credential-access
+    - attack.t1649
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4887
+    condition: selection
+level: medium

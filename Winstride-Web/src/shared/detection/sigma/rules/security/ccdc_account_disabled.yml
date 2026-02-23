@@ -1,0 +1,18 @@
+title: User Account Disabled
+id: a0000001-0000-0000-0000-000000000009
+name: account_disabled
+status: stable
+description: A user account was disabled. Red teams disable legitimate admin accounts to deny blue team access.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.impact
+    - attack.t1531
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4725
+    condition: selection
+level: high

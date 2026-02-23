@@ -1,0 +1,19 @@
+title: RDP Logon Detected
+id: a0000001-0000-0000-0000-000000000013
+name: rdp_logon
+status: stable
+description: A Remote Desktop (RDP) session was established. In CCDC, RDP from unknown sources indicates red team lateral movement.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.lateral-movement
+    - attack.t1021.001
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4624
+        LogonType: '10'
+    condition: selection
+level: high

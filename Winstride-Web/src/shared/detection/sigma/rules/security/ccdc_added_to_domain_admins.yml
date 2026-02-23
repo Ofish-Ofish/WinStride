@@ -1,0 +1,24 @@
+title: Member Added to High-Privilege Domain Group
+id: a0000001-0000-0000-0000-000000000006
+name: added_to_domain_admins
+status: stable
+description: A user was added to Domain Admins, Enterprise Admins, or Schema Admins. This grants domain-wide control and is catastrophic in CCDC.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1098
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID:
+            - 4728
+            - 4756
+        TargetUserName:
+            - 'Domain Admins'
+            - 'Enterprise Admins'
+            - 'Schema Admins'
+    condition: selection
+level: critical

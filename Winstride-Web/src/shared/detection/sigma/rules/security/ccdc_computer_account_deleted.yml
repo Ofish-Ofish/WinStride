@@ -1,0 +1,18 @@
+title: Computer Account Deleted
+id: a0000001-0000-0000-0000-000000000060
+name: computer_account_deleted
+status: stable
+description: A computer account was deleted from the domain. Removes machines from the domain — a destructive CCDC sabotage technique.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.impact
+    - attack.t1531
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4743
+    condition: selection
+level: high

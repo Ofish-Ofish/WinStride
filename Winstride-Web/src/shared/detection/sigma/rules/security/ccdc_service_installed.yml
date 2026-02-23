@@ -1,0 +1,18 @@
+title: New Service Installed
+id: a0000001-0000-0000-0000-000000000010
+name: service_installed
+status: stable
+description: A new Windows service was installed. Services run as SYSTEM and survive reboots — a primary persistence and privilege escalation vector.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1543.003
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4697
+    condition: selection
+level: high

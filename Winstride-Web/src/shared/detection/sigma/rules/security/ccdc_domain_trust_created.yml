@@ -1,0 +1,18 @@
+title: Domain Trust Created
+id: a0000001-0000-0000-0000-000000000034
+name: domain_trust_created
+status: stable
+description: A new domain trust was created. In CCDC, trusts are pre-configured and new ones should never be added. May indicate attacker pivoting to an attacker-controlled domain.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1484.002
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4706
+    condition: selection
+level: high

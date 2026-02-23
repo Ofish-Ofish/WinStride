@@ -1,0 +1,31 @@
+title: Meterpreter/Cobalt Strike GetSystem Service Installation
+id: a0000001-0000-0000-0000-000000000030
+name: getsystem_service
+status: stable
+description: A service was installed matching the pattern used by Meterpreter getsystem or Cobalt Strike named pipe impersonation. Near-zero false positives.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.privilege-escalation
+    - attack.t1134.001
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4697
+    pipe_pattern:
+        ServiceFileName|contains|all:
+            - 'cmd'
+            - '/c'
+            - 'echo'
+            - '\pipe\'
+    rundll_pattern:
+        ServiceFileName|contains|all:
+            - 'rundll32'
+            - '.dll,a'
+            - '/p:'
+    admin_share:
+        ServiceFileName|startswith: '\\127.0.0.1\ADMIN$\'
+    condition: selection and (1 of pipe_pattern or 1 of rundll_pattern or admin_share)
+level: critical

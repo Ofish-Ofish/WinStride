@@ -1,0 +1,19 @@
+title: MS14-068 Kerberos Exploit Attempt
+id: a0000001-0000-0000-0000-000000000064
+name: ms14_068
+status: stable
+description: Kerberos service ticket request failed with KDC_ERR_MODIFIED status — signature of the MS14-068 Kerberos privilege escalation exploit.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.privilege-escalation
+    - attack.t1068
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4769
+        Status|contains: '0F'
+    condition: selection
+level: critical

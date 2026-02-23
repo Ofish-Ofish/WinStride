@@ -1,0 +1,16 @@
+title: Multiple Account Lockouts
+id: c0000001-0000-0000-0000-000000000007
+status: stable
+description: 3 or more account lockouts within 10 minutes indicates a widespread brute force or password spray that hit the lockout threshold.
+tags:
+    - attack.credential-access
+    - attack.t1110
+level: critical
+correlation:
+    type: event_count
+    rules:
+        - a0000001-0000-0000-0000-000000000016
+    group-by: []
+    timespan: 10m
+    condition:
+        gte: 3

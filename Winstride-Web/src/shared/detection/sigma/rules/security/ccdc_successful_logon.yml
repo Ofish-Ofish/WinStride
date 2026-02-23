@@ -1,0 +1,19 @@
+title: Successful Network Logon
+id: a0000001-0000-0000-0000-000000000024
+name: successful_network_logon
+status: stable
+description: Successful network logon (Type 3). Used as a base rule for temporal correlations (e.g., brute force then success).
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.lateral-movement
+    - attack.t1078
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4624
+        LogonType: '3'
+    condition: selection
+level: info

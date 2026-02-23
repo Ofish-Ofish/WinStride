@@ -1,0 +1,18 @@
+title: AD Certificate Services - Certificate Requested
+id: a0000001-0000-0000-0000-000000000056
+name: adcs_cert_requested
+status: stable
+description: A certificate was requested via AD Certificate Services. Certipy, Certify, and Impacket exploit vulnerable templates (ESC1/ESC8) to obtain certificates for privilege escalation.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.credential-access
+    - attack.t1649
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4886
+    condition: selection
+level: medium
