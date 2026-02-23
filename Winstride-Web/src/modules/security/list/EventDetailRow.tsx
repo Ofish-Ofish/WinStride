@@ -142,6 +142,13 @@ function formatFieldValue(name: string, value: string): string {
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}  ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export default function EventDetailRow({ event, detections }: { event: WinEvent; detections?: Detection[] }) {
   const data = parseEventData(event);
 
@@ -168,6 +175,10 @@ export default function EventDetailRow({ event, detections }: { event: WinEvent;
   return (
     <div className="mx-4 my-2 bg-[#0d1117] border border-[#21262d] rounded-lg overflow-hidden">
       <div className={`h-0.5 ${isFailedLogon ? 'bg-[#f85149]' : 'bg-[#1f6feb]'}`} />
+      <div className="px-4 pt-3 pb-1 flex items-center gap-2 text-[13px]">
+        <span className="text-gray-300">Time:</span>
+        <span className="text-white font-mono">{formatTimestamp(event.timeCreated)}</span>
+      </div>
       {detections && detections.length > 0 && (
         <div className="mx-4 mt-3 mb-1 space-y-1.5">
           <div className="text-[11px] font-semibold text-[#ff7b72]">Detections</div>

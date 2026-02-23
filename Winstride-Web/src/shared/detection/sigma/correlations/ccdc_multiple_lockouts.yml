@@ -5,7 +5,7 @@ description: 3 or more account lockouts within 10 minutes indicates a widespread
 tags:
     - attack.credential-access
     - attack.t1110
-level: critical
+level: high
 correlation:
     type: event_count
     rules:

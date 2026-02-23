@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef, useDeferredValue } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, useDeferredValue, memo } from 'react';
 import type { WinEvent } from '../../modules/security/shared/types';
 import {
   type ColumnDef,
@@ -191,6 +191,25 @@ function DefaultCell({ col, event }: { col: ColumnDef; event: WinEvent }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Memoized detail row — prevents re-render on parent cascades        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Wraps the detail row in React.memo keyed on event object reference.
+ * renderDetailRow is read from a ref so changing the function reference
+ * (which happens every parent render) does NOT trigger a re-render.
+ */
+const MemoDetailRow = memo(function MemoDetailRow({
+  event,
+  rendererRef,
+}: {
+  event: WinEvent;
+  rendererRef: React.RefObject<(event: WinEvent) => React.ReactNode>;
+}) {
+  return <>{rendererRef.current!(event)}</>;
+});
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -242,6 +261,10 @@ export default function VirtualizedEventList({
       return next;
     });
   }, []);
+
+  /* ---- Stable ref for detail row renderer (avoids re-render on parent cascade) ---- */
+  const renderDetailRowRef = useRef(renderDetailRow);
+  renderDetailRowRef.current = renderDetailRow;
 
   /* ---- Resize handle for filter sidebar ---- */
   const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
@@ -500,7 +523,7 @@ export default function VirtualizedEventList({
                                 </div>
                               ))}
                             </div>
-                            {isExpanded && renderDetailRow(event)}
+                            {isExpanded && <MemoDetailRow event={event} rendererRef={renderDetailRowRef} />}
                           </div>
                         );
                       })}
