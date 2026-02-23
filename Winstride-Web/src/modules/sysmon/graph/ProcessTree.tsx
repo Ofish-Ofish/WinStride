@@ -1,10 +1,9 @@
 import { useRef, useMemo, useState, useCallback, useEffect, useTransition } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchEvents } from '../../../api/client';
 import { type SysmonFilters } from '../shared/filterTypes';
 import type { FilterState } from '../../../components/filter/filterPrimitives';
 import { saveSysmonFilters } from '../shared/filterSerializer';
-import { buildSysmonFilter } from '../shared/buildSysmonFilter';
+import { SYSMON_EVENT_IDS } from '../shared/eventMeta';
+import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
 import { parseProcessCreate, parseNetworkConnect, parseFileCreate } from '../shared/parseSysmonEvent';
 import { INTEGRITY_COLORS } from '../shared/eventMeta';
 import SysmonFilterPanel from '../SysmonFilterPanel';
@@ -242,23 +241,13 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     document.addEventListener('mouseup', onUp);
   }, [panelWidth]);
 
-  /* ---- OData filter ---- */
-  const odataFilter = useMemo(
-    () => buildSysmonFilter(filters),
-    [filters.eventFilters, filters.timeStart, filters.timeEnd],
-  );
-
   /* ---- Data fetch ---- */
-  const { data: rawEvents, isLoading, error } = useQuery<WinEvent[]>({
-    queryKey: ['events', 'sysmon-graph', odataFilter],
-    queryFn: () => fetchEvents({
-      $filter: odataFilter,
-      $select: 'id,eventId,machineName,timeCreated,eventData',
-      $orderby: 'timeCreated desc',
-      $top: '100',
-    }),
-    refetchInterval: 30_000,
-    enabled: visible,
+  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
+    logName: 'Microsoft-Windows-Sysmon/Operational',
+    allEventIds: SYSMON_EVENT_IDS,
+    eventFilters: filters.eventFilters,
+    timeStart: filters.timeStart,
+    timeEnd: filters.timeEnd,
   });
 
   /* ---- Severity integration ---- */
@@ -266,7 +255,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
 
   /* ---- Available values ---- */
   const { availableMachines, availableProcesses, availableUsers } = useMemo(() => {
-    if (!rawEvents) return { availableMachines: [], availableProcesses: [], availableUsers: [] };
+    if (rawEvents.length === 0) return { availableMachines: [], availableProcesses: [], availableUsers: [] };
     const machines = new Set<string>();
     const processes = new Set<string>();
     const users = new Set<string>();
@@ -289,7 +278,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
 
   /* ---- Client-side filtering + aggregated tree build ---- */
   const treeData = useMemo(() => {
-    if (!rawEvents) return { nodes: [], edges: [] };
+    if (rawEvents.length === 0) return { nodes: [], edges: [] };
 
     let events = rawEvents;
 
@@ -394,6 +383,15 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
             <span className="text-[11px] text-gray-300">
               {treeData.nodes.length} nodes &middot; {treeData.edges.length} edges
             </span>
+          )}
+          {isComplete === false && totalCount != null && (
+            <div className="flex items-center gap-2 text-[11px] text-gray-300 tabular-nums">
+              <div className="w-24 h-1.5 bg-[#1c2128] rounded overflow-hidden">
+                <div className="h-full bg-[#58a6ff] rounded transition-all duration-300"
+                  style={{ width: `${Math.min(100, (loadedCount / totalCount) * 100)}%` }} />
+              </div>
+              <span>{loadedCount.toLocaleString()} / {totalCount.toLocaleString()}</span>
+            </div>
           )}
           <div className="flex gap-1.5">
             <ToolbarButton onClick={() => startTransition(() => setHideSystem((v) => !v))} active={hideSystem}>
