@@ -325,16 +325,17 @@ export default function VirtualizedEventList({
   }, []);
 
   const totalHeight = sortedEvents.length * ROW_HEIGHT;
-  // Don't render rows until ResizeObserver has measured the container.
-  // Without this guard, the FIRST frame renders ALL events as real DOM nodes
-  // (e.g. 1500 rows × 7 cols = 10,500 elements) before virtualization kicks in.
-  const ready = containerHeight > 0;
-  const startIdx = ready
+  // Before ResizeObserver fires, render a small safe batch instead of ALL rows.
+  // Without this cap, the first frame creates every event as a real DOM node
+  // (e.g. 1500 rows × 7 cols = 10,500 elements) and stalls the browser.
+  const INITIAL_BATCH = 30;
+  const measured = containerHeight > 0;
+  const startIdx = measured
     ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
     : 0;
-  const endIdx = ready
+  const endIdx = measured
     ? Math.min(sortedEvents.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN)
-    : 0;
+    : Math.min(sortedEvents.length, INITIAL_BATCH);
   const visibleEvents = sortedEvents.slice(startIdx, endIdx);
 
   const scrollToTop = useCallback(() => {
@@ -419,95 +420,96 @@ export default function VirtualizedEventList({
       <div className="flex flex-1 min-h-0">
         {/* Table container */}
         <div className="flex-1 min-w-0 flex flex-col rounded-lg border border-[#21262d] overflow-hidden bg-[#0d1117]" style={{ contain: 'layout style paint' }}>
-          {isLoading && (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="flex items-center gap-3 text-gray-500 text-sm">
-                <div className="w-4 h-4 border-2 border-gray-600 border-t-gray-400 rounded-full animate-spin" />
-                Loading events...
-              </div>
-            </div>
-          )}
-          {error && (
-            <div className="flex-1 flex items-center justify-center text-red-400/80 text-sm">
-              Error loading events
-            </div>
-          )}
-          {!isLoading && !error && (
+          {/* Scroll container is always mounted so ResizeObserver can measure it */}
           <div
             ref={scrollRef}
             className="flex-1 overflow-y-auto overflow-x-hidden gf-scrollbar"
             onScroll={handleScroll}
           >
-            {/* Sticky header row */}
-            <div
-              className="sticky top-0 z-10 bg-[#161b22] border-b border-[#21262d] grid"
-              style={{ gridTemplateColumns: gridTemplate }}
-            >
-              {activeCols.map((col) => (
-                <div
-                  key={col.key}
-                  className={`px-4 py-2.5 text-[11px] font-semibold text-gray-200 uppercase tracking-wider truncate ${
-                    col.sortable ? 'cursor-pointer hover:text-gray-200 select-none transition-colors' : ''
-                  }`}
-                  onClick={col.sortable ? () => handleSort(col.key) : undefined}
-                >
-                  {col.label}
-                  {sortKey === col.key && <SortIcon dir={sortDir} />}
+            {isLoading ? (
+              <div className="flex items-center justify-center min-h-[200px]">
+                <div className="flex items-center gap-3 text-gray-500 text-sm">
+                  <div className="w-4 h-4 border-2 border-gray-600 border-t-gray-400 rounded-full animate-spin" />
+                  Loading events...
                 </div>
-              ))}
-            </div>
-
-            {/* Body */}
-            {sortedEvents.length === 0 ? (
-              <div className="flex items-center justify-center py-16 text-gray-400 text-sm">
-                {search
-                  ? `No events match "${search}"`
-                  : emptyMessage}
+              </div>
+            ) : error ? (
+              <div className="flex items-center justify-center min-h-[200px] text-red-400/80 text-sm">
+                Error loading events
               </div>
             ) : (
-              <div style={{ height: totalHeight, position: 'relative', contain: 'strict' }}>
+              <>
+                {/* Sticky header row */}
                 <div
-                  style={{
-                    position: 'absolute',
-                    top: startIdx * ROW_HEIGHT,
-                    left: 0,
-                    right: 0,
-                    willChange: 'transform',
-                  }}
+                  className="sticky top-0 z-10 bg-[#161b22] border-b border-[#21262d] grid"
+                  style={{ gridTemplateColumns: gridTemplate }}
                 >
-                  {visibleEvents.map((event) => {
-                    const isExpanded = expandedId === event.id;
-                    return (
-                      <div key={event.id}>
-                        <div
-                          onClick={() => setExpandedId(isExpanded ? null : event.id)}
-                          className={`grid cursor-pointer border-t border-[#21262d]/50 transition-colors ${
-                            isExpanded ? 'bg-[#161b22]' : 'hover:bg-[#161b22]/60'
-                          }`}
-                          style={{
-                            gridTemplateColumns: gridTemplate,
-                            height: ROW_HEIGHT,
-                            alignItems: 'center',
-                          }}
-                        >
-                          {activeCols.map((col) => (
-                            <div
-                              key={col.key}
-                              className="px-4 text-[12px] text-white truncate"
-                            >
-                              {renderCell?.(col, event) ?? <DefaultCell col={col} event={event} />}
-                            </div>
-                          ))}
-                        </div>
-                        {isExpanded && renderDetailRow(event)}
-                      </div>
-                    );
-                  })}
+                  {activeCols.map((col) => (
+                    <div
+                      key={col.key}
+                      className={`px-4 py-2.5 text-[11px] font-semibold text-gray-200 uppercase tracking-wider truncate ${
+                        col.sortable ? 'cursor-pointer hover:text-gray-200 select-none transition-colors' : ''
+                      }`}
+                      onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                    >
+                      {col.label}
+                      {sortKey === col.key && <SortIcon dir={sortDir} />}
+                    </div>
+                  ))}
                 </div>
-              </div>
+
+                {/* Body */}
+                {sortedEvents.length === 0 ? (
+                  <div className="flex items-center justify-center py-16 text-gray-400 text-sm">
+                    {search
+                      ? `No events match "${search}"`
+                      : emptyMessage}
+                  </div>
+                ) : (
+                  <div style={{ height: totalHeight, position: 'relative', contain: 'strict' }}>
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: startIdx * ROW_HEIGHT,
+                        left: 0,
+                        right: 0,
+                        willChange: 'transform',
+                      }}
+                    >
+                      {visibleEvents.map((event) => {
+                        const isExpanded = expandedId === event.id;
+                        return (
+                          <div key={event.id}>
+                            <div
+                              onClick={() => setExpandedId(isExpanded ? null : event.id)}
+                              className={`grid cursor-pointer border-t border-[#21262d]/50 transition-colors ${
+                                isExpanded ? 'bg-[#161b22]' : 'hover:bg-[#161b22]/60'
+                              }`}
+                              style={{
+                                gridTemplateColumns: gridTemplate,
+                                height: ROW_HEIGHT,
+                                alignItems: 'center',
+                              }}
+                            >
+                              {activeCols.map((col) => (
+                                <div
+                                  key={col.key}
+                                  className="px-4 text-[12px] text-white truncate"
+                                >
+                                  {renderCell?.(col, event) ?? <DefaultCell col={col} event={event} />}
+                                </div>
+                              ))}
+                            </div>
+                            {isExpanded && renderDetailRow(event)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
-          )}
         </div>
 
         {/* Resize handle + Filter sidebar */}
