@@ -187,7 +187,7 @@ export default function PSEventList({ visible }: { visible: boolean }) {
       showFilters={showFilters}
       onToggleFilters={toggleFilters}
       filteredEvents={severityFilteredEvents}
-      rawCount={rawEvents?.length ?? 0}
+      rawCount={rawEvents.length}
       search={search}
       onSearchChange={setSearch}
       jsonMapper={psJsonMapper}
