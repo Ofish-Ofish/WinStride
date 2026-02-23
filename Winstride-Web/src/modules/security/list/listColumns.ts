@@ -2,8 +2,6 @@ import type { WinEvent } from '../shared/types';
 import type { ColumnDef } from '../../../shared/listUtils';
 import { getDataField } from '../../../shared/eventParsing';
 import { EVENT_LABELS, LOGON_TYPE_LABELS } from '../shared/eventMeta';
-import type { Detection } from '../../../shared/detection/rules';
-import { maxSeverity, SEVERITY_LABELS, SEVERITY_COLORS } from '../../../shared/detection/engine';
 
 /* ------------------------------------------------------------------ */
 /*  Event data parsing                                                 */

@@ -169,6 +169,7 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     queryFn: () => fetchEvents({
       $filter: odataFilter,
       $select: 'id,eventId,machineName,timeCreated,eventData',
+      $top: '100',
     }),
     refetchInterval: 30000,
   });

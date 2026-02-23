@@ -1,5 +1,4 @@
 import type { PSFilters, FilterState } from './filterTypes';
-import { getDefaultPSFilters } from './filterTypes';
 
 interface SerializedPSFilters {
   eventFilters: [number, FilterState][];

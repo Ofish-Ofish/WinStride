@@ -83,6 +83,7 @@ export default function TimelineView() {
       $filter: odataFilter,
       $select: 'eventId,machineName,timeCreated,eventData',
       $orderby: 'timeCreated desc',
+      $top: '100',
     }),
     refetchInterval: 30_000,
   });

@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Sigma rules (fetched via scripts/fetch-sigma-rules.sh)
+src/shared/detection/sigma/rules/

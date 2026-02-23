@@ -113,6 +113,7 @@ export default function PSEventList({ visible }: { visible: boolean }) {
       $filter: odataFilter,
       $select: 'id,eventId,level,machineName,timeCreated,eventData',
       $orderby: 'timeCreated desc',
+      $top: '100',
     }),
     refetchInterval: 30_000,
     enabled: visible,

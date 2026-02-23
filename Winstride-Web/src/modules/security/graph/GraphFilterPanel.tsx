@@ -189,7 +189,6 @@ export default function GraphFilterPanel({
 
   /* ---- Event counts ---- */
   const eventVisibleCount = countVisible(ALL_EVENT_IDS, filters.eventFilters);
-  const logonTypeVisibleCount = countVisible(ALL_LOGON_TYPES, filters.logonTypeFilters);
 
   /* ---- User helpers ---- */
   const visibleUsers = useMemo(

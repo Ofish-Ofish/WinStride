@@ -15,19 +15,30 @@ export function getDataField(dataArray: unknown[], fieldName: string): string {
   return '';
 }
 
+/** Cache parsed Data arrays to avoid re-parsing JSON per rule per event. */
+const _dataArrayCache = new WeakMap<WinEvent, unknown[] | null>();
+
 /** Parse eventData JSON and return the Data array, or null on failure. */
 export function getDataArray(event: WinEvent): unknown[] | null {
-  if (!event.eventData) return null;
+  const cached = _dataArrayCache.get(event);
+  if (cached !== undefined) return cached;
+
+  if (!event.eventData) {
+    _dataArrayCache.set(event, null);
+    return null;
+  }
   try {
     const parsed = JSON.parse(event.eventData);
     const eventObj = parsed?.Event ?? parsed;
     const eventData = eventObj?.EventData;
-    if (!eventData) return null;
+    if (!eventData) { _dataArrayCache.set(event, null); return null; }
     let dataArray = eventData.Data;
-    if (!dataArray) return null;
+    if (!dataArray) { _dataArrayCache.set(event, null); return null; }
     if (!Array.isArray(dataArray)) dataArray = [dataArray];
+    _dataArrayCache.set(event, dataArray);
     return dataArray;
   } catch {
+    _dataArrayCache.set(event, null);
     return null;
   }
 }
