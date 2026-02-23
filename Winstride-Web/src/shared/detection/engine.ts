@@ -173,7 +173,7 @@ export function useSeverityIntegration(events: WinEvent[] | undefined, module: M
       const minRank = SEVERITY_RANK[minSeverity];
       return evts.filter((e) => {
         const dets = detections.byEventId.get(e.id);
-        if (!dets || dets.length === 0) return false;
+        if (!dets || dets.length === 0) return true; // no detection = always show
         return SEVERITY_RANK[maxSeverity(dets)!] >= minRank;
       });
     },
