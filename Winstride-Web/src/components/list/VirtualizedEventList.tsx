@@ -325,13 +325,16 @@ export default function VirtualizedEventList({
   }, []);
 
   const totalHeight = sortedEvents.length * ROW_HEIGHT;
-  const shouldVirtualize = containerHeight > 0;
-  const startIdx = shouldVirtualize
+  // Don't render rows until ResizeObserver has measured the container.
+  // Without this guard, the FIRST frame renders ALL events as real DOM nodes
+  // (e.g. 1500 rows × 7 cols = 10,500 elements) before virtualization kicks in.
+  const ready = containerHeight > 0;
+  const startIdx = ready
     ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
     : 0;
-  const endIdx = shouldVirtualize
+  const endIdx = ready
     ? Math.min(sortedEvents.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN)
-    : sortedEvents.length;
+    : 0;
   const visibleEvents = sortedEvents.slice(startIdx, endIdx);
 
   const scrollToTop = useCallback(() => {
