@@ -37,7 +37,7 @@ interface Props {
   availableAuthPackages?: string[];
   availableProcesses?: string[];
   availableFailureStatuses?: string[];
-  maxActivity: number;
+  maxActivity?: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -227,53 +227,57 @@ export default function GraphFilterPanel({
 
       <div className="h-px bg-[#21262d]" />
 
-      {/* Activity */}
-      <CollapsibleSection
-        title="Activity"
-        right={<span className="text-[12px] font-medium text-[#58a6ff]">{activityDisplay}</span>}
-      >
-        {activityCeiling < 2 ? (
-          <div className="text-[12px] text-gray-500 py-1">All activity: 1</div>
-        ) : (
-          <>
-            <div className="relative h-5">
-              <DualRangeTrack minPct={minPct} maxPct={maxPct} />
-              <input
-                type="range"
-                className="gf-slider-dual"
-                min={1}
-                max={activityCeiling}
-                step={1}
-                value={localActMin}
-                onChange={(e) => {
-                  const val = Math.min(Number(e.target.value), localActMax);
-                  setLocalActMin(val);
-                  updateFilter('activityMin', val);
-                }}
-              />
-              <input
-                type="range"
-                className="gf-slider-dual"
-                min={1}
-                max={activityCeiling}
-                step={1}
-                value={localActMax}
-                onChange={(e) => {
-                  const val = Math.max(Number(e.target.value), localActMin);
-                  setLocalActMax(val);
-                  updateFilter('activityMax', val >= activityCeiling ? Infinity : val);
-                }}
-              />
-            </div>
-            <div className="flex justify-between mt-1 px-0.5">
-              <span className="text-[9px] text-gray-600 select-none">1</span>
-              <span className="text-[9px] text-gray-600 select-none">{activityCeiling}</span>
-            </div>
-          </>
-        )}
-      </CollapsibleSection>
+      {/* Activity — only shown in graph view */}
+      {maxActivity != null && (
+        <>
+          <CollapsibleSection
+            title="Activity"
+            right={<span className="text-[12px] font-medium text-[#58a6ff]">{activityDisplay}</span>}
+          >
+            {activityCeiling < 2 ? (
+              <div className="text-[12px] text-gray-500 py-1">All activity: 1</div>
+            ) : (
+              <>
+                <div className="relative h-5">
+                  <DualRangeTrack minPct={minPct} maxPct={maxPct} />
+                  <input
+                    type="range"
+                    className="gf-slider-dual"
+                    min={1}
+                    max={activityCeiling}
+                    step={1}
+                    value={localActMin}
+                    onChange={(e) => {
+                      const val = Math.min(Number(e.target.value), localActMax);
+                      setLocalActMin(val);
+                      updateFilter('activityMin', val);
+                    }}
+                  />
+                  <input
+                    type="range"
+                    className="gf-slider-dual"
+                    min={1}
+                    max={activityCeiling}
+                    step={1}
+                    value={localActMax}
+                    onChange={(e) => {
+                      const val = Math.max(Number(e.target.value), localActMin);
+                      setLocalActMax(val);
+                      updateFilter('activityMax', val >= activityCeiling ? Infinity : val);
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1 px-0.5">
+                  <span className="text-[9px] text-gray-600 select-none">1</span>
+                  <span className="text-[9px] text-gray-600 select-none">{activityCeiling}</span>
+                </div>
+              </>
+            )}
+          </CollapsibleSection>
 
-      <div className="h-px bg-[#21262d]" />
+          <div className="h-px bg-[#21262d]" />
+        </>
+      )}
 
       {/* Event Types */}
       <CollapsibleSection

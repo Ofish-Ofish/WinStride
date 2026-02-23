@@ -133,8 +133,6 @@ export default function EventList({ visible }: { visible: boolean }) {
     };
   }, [rawEvents]);
 
-  const maxActivity = 50;
-
   /* ---- Client-side filtering ---- */
   const filteredEvents = useMemo(() => {
     if (!rawEvents) return [];
@@ -288,7 +286,6 @@ export default function EventList({ visible }: { visible: boolean }) {
           availableAuthPackages={availableAuthPackages}
           availableProcesses={availableProcesses}
           availableFailureStatuses={availableFailureStatuses}
-          maxActivity={maxActivity}
         />
       )}
       showFilters={showFilters}
