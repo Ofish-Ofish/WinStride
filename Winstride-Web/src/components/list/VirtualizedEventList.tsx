@@ -328,14 +328,14 @@ export default function VirtualizedEventList({
   // Before ResizeObserver fires, render a small safe batch instead of ALL rows.
   // Without this cap, the first frame creates every event as a real DOM node
   // (e.g. 1500 rows × 7 cols = 10,500 elements) and stalls the browser.
+  // Always derive startIdx from scrollTop so the window follows scrolling even
+  // before ResizeObserver has measured the container. Use a safe batch size as
+  // fallback to avoid rendering ALL rows on the first frame.
   const INITIAL_BATCH = 30;
-  const measured = containerHeight > 0;
-  const startIdx = measured
-    ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
-    : 0;
-  const endIdx = measured
+  const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIdx = containerHeight > 0
     ? Math.min(sortedEvents.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN)
-    : Math.min(sortedEvents.length, INITIAL_BATCH);
+    : Math.min(sortedEvents.length, startIdx + INITIAL_BATCH);
   const visibleEvents = sortedEvents.slice(startIdx, endIdx);
 
   const scrollToTop = useCallback(() => {
