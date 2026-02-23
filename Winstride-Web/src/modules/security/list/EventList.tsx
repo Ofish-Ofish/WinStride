@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import GraphFilterPanel from '../graph/GraphFilterPanel';
 import { DEFAULT_FILTERS, resolveTriState, type GraphFilters } from '../shared/filterTypes';
 import { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount, ALL_EVENT_IDS } from '../shared/eventMeta';
@@ -101,18 +101,22 @@ export default function EventList({ visible }: { visible: boolean }) {
     timeEnd: filters.timeEnd,
   }, { enabled: visible });
 
-  const sev = useSeverityIntegration(rawEvents, 'security');
+  // Defer events so the expensive cascade (detection → filter → sort)
+  // runs in a non-blocking render. Progress bar stays immediately responsive.
+  const deferredEvents = useDeferredValue(rawEvents);
+
+  const sev = useSeverityIntegration(deferredEvents, 'security');
 
   /* ---- Available values for filter panel ---- */
   const { availableMachines, availableUsers, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses } = useMemo(() => {
-    if (!rawEvents) return { availableMachines: [], availableUsers: [], availableIps: [], availableAuthPackages: [], availableProcesses: [], availableFailureStatuses: [] };
+    if (!deferredEvents) return { availableMachines: [], availableUsers: [], availableIps: [], availableAuthPackages: [], availableProcesses: [], availableFailureStatuses: [] };
     const machines = new Set<string>();
     const users = new Set<string>();
     const ips = new Set<string>();
     const authPkgs = new Set<string>();
     const procs = new Set<string>();
     const failStatuses = new Set<string>();
-    for (const e of rawEvents) {
+    for (const e of deferredEvents) {
       machines.add(e.machineName);
       const parsed = parseEventData(e);
       if (!parsed) continue;
@@ -131,11 +135,11 @@ export default function EventList({ visible }: { visible: boolean }) {
       availableProcesses: [...procs].sort(),
       availableFailureStatuses: [...failStatuses].sort(),
     };
-  }, [rawEvents]);
+  }, [deferredEvents]);
 
   /* ---- Client-side filtering (single pass, no sev dependency) ---- */
   const dataFiltered = useMemo(() => {
-    if (!rawEvents) return [];
+    if (!deferredEvents) return [];
 
     // Pre-compute filter sets once
     const logonAllowed = filters.logonTypeFilters.size > 0
@@ -163,7 +167,7 @@ export default function EventList({ visible }: { visible: boolean }) {
     const procAllowed = filters.processFilters.size > 0 ? new Set(resolveTriState(availableProcesses, filters.processFilters)) : null;
     const statusAllowed = filters.failureStatusFilters.size > 0 ? new Set(resolveTriState(availableFailureStatuses, filters.failureStatusFilters)) : null;
 
-    return rawEvents.filter((e) => {
+    return deferredEvents.filter((e) => {
       // Machine (no parse needed — cheapest check first)
       if (machineSelect && !machineSelect.has(e.machineName)) return false;
       if (machineExclude && machineExclude.has(e.machineName)) return false;
@@ -198,7 +202,7 @@ export default function EventList({ visible }: { visible: boolean }) {
 
       return true;
     });
-  }, [rawEvents, filters, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
+  }, [deferredEvents, filters, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
 
   /* ---- Search (separated — only reruns when search/detections change) ---- */
   const filteredEvents = useMemo(
@@ -250,7 +254,7 @@ export default function EventList({ visible }: { visible: boolean }) {
       showFilters={showFilters}
       onToggleFilters={toggleFilters}
       filteredEvents={severityFilteredEvents}
-      rawCount={rawEvents.length}
+      rawCount={deferredEvents.length}
       search={search}
       onSearchChange={setSearch}
       jsonMapper={securityJsonMapper}

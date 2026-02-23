@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, useDeferredValue } from 'react';
 import type { WinEvent } from '../../modules/security/shared/types';
 import {
   type ColumnDef,
@@ -266,9 +266,24 @@ export default function VirtualizedEventList({
   }, [panelWidth]);
 
   /* ---- Sort ---- */
+  // Stabilize getSortValue so detection updates don't trigger re-sort
+  // when we're not sorting by severity
+  const getSortValueRef = useRef(getSortValue);
+  getSortValueRef.current = getSortValue;
+  const sortNonce = sortKey === 'severity' ? getSortValue : null;
+
   const sortedEvents = useMemo(
-    () => sortEvents(filteredEvents, columns, sortKey, sortDir, getSortValue),
-    [filteredEvents, columns, sortKey, sortDir, getSortValue],
+    () => {
+      if (!sortDir) return filteredEvents;
+      // Events arrive from server as ORDER BY timeCreated DESC.
+      // .filter() preserves order, so skip O(n log n) sort for time column.
+      if (sortKey === 'time') {
+        return sortDir === 'desc' ? filteredEvents : [...filteredEvents].reverse();
+      }
+      return sortEvents(filteredEvents, columns, sortKey, sortDir, getSortValueRef.current);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredEvents, columns, sortKey, sortDir, sortNonce],
   );
 
   const handleSort = useCallback((key: string) => {

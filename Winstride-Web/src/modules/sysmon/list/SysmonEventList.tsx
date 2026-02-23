@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import { DEFAULT_SYSMON_FILTERS, type SysmonFilters } from '../shared/filterTypes';
 import { loadSysmonFilters, saveSysmonFilters } from '../shared/filterSerializer';
 import { SYSMON_EVENT_LABELS, SYSMON_EVENT_IDS, EVENT_COLORS, INTEGRITY_COLORS } from '../shared/eventMeta';
@@ -94,15 +94,17 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
     timeEnd: filters.timeEnd,
   }, { enabled: visible });
 
-  const sev = useSeverityIntegration(rawEvents, 'sysmon');
+  const deferredEvents = useDeferredValue(rawEvents);
+
+  const sev = useSeverityIntegration(deferredEvents, 'sysmon');
 
   /* ---- Available values for filter panel ---- */
   const { availableMachines, availableProcesses, availableUsers } = useMemo(() => {
-    if (rawEvents.length === 0) return { availableMachines: [], availableProcesses: [], availableUsers: [] };
+    if (deferredEvents.length === 0) return { availableMachines: [], availableProcesses: [], availableUsers: [] };
     const machines = new Set<string>();
     const processes = new Set<string>();
     const users = new Set<string>();
-    for (const e of rawEvents) {
+    for (const e of deferredEvents) {
       machines.add(e.machineName);
       const proc = parseProcessCreate(e);
       const net = parseNetworkConnect(e);
@@ -117,11 +119,11 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
       availableProcesses: [...processes].sort(),
       availableUsers: [...users].sort(),
     };
-  }, [rawEvents]);
+  }, [deferredEvents]);
 
   /* ---- Client-side filtering (single pass, no sev dependency) ---- */
   const dataFiltered = useMemo(() => {
-    if (rawEvents.length === 0) return [];
+    if (deferredEvents.length === 0) return [];
 
     // Pre-compute filter sets
     let machineSelect: Set<string> | null = null;
@@ -137,7 +139,7 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
     const userAllowed = filters.userFilters.size > 0 ? new Set(resolveTriState(availableUsers, filters.userFilters)) : null;
     const needsParse = procAllowed || integrityAllowed || userAllowed;
 
-    return rawEvents.filter((e) => {
+    return deferredEvents.filter((e) => {
       // Machine (cheapest check first)
       if (machineSelect && !machineSelect.has(e.machineName)) return false;
       if (machineExclude && machineExclude.has(e.machineName)) return false;
@@ -160,7 +162,7 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
 
       return true;
     });
-  }, [rawEvents, filters, availableProcesses, availableUsers]);
+  }, [deferredEvents, filters, availableProcesses, availableUsers]);
 
   /* ---- Search (separated — only reruns when search/detections change) ---- */
   const filteredEvents = useMemo(
@@ -209,7 +211,7 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
       showFilters={showFilters}
       onToggleFilters={toggleFilters}
       filteredEvents={severityFilteredEvents}
-      rawCount={rawEvents.length}
+      rawCount={deferredEvents.length}
       search={search}
       onSearchChange={setSearch}
       jsonMapper={sysmonJsonMapper}

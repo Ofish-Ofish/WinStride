@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import { DEFAULT_PS_FILTERS, type PSFilters } from '../shared/filterTypes';
 import { loadPSFilters, savePSFilters } from '../shared/filterSerializer';
 import { PS_EVENT_LABELS, PS_EVENT_IDS } from '../shared/eventMeta';
@@ -107,20 +107,22 @@ export default function PSEventList({ visible }: { visible: boolean }) {
     timeEnd: filters.timeEnd,
   }, { enabled: visible });
 
-  const sev = useSeverityIntegration(rawEvents, 'powershell');
+  const deferredEvents = useDeferredValue(rawEvents);
+
+  const sev = useSeverityIntegration(deferredEvents, 'powershell');
 
   /* ---- Available values for filter panel ---- */
   const availableMachines = useMemo(() => {
-    if (!rawEvents) return [];
+    if (!deferredEvents) return [];
     const machines = new Set<string>();
-    for (const e of rawEvents) machines.add(e.machineName);
+    for (const e of deferredEvents) machines.add(e.machineName);
     return [...machines].sort();
-  }, [rawEvents]);
+  }, [deferredEvents]);
 
   /* ---- Client-side filtering (no sev dependency) ---- */
   const dataFiltered = useMemo(() => {
-    if (!rawEvents) return [];
-    let events = rawEvents;
+    if (!deferredEvents) return [];
+    let events = deferredEvents;
 
     // Machine filter
     if (filters.machineFilters.size > 0) {
@@ -139,7 +141,7 @@ export default function PSEventList({ visible }: { visible: boolean }) {
     }
 
     return events;
-  }, [rawEvents, filters]);
+  }, [deferredEvents, filters]);
 
   /* ---- Search (separated — only reruns when search/detections change) ---- */
   const filteredEvents = useMemo(
@@ -186,7 +188,7 @@ export default function PSEventList({ visible }: { visible: boolean }) {
       showFilters={showFilters}
       onToggleFilters={toggleFilters}
       filteredEvents={severityFilteredEvents}
-      rawCount={rawEvents.length}
+      rawCount={deferredEvents.length}
       search={search}
       onSearchChange={setSearch}
       jsonMapper={psJsonMapper}
