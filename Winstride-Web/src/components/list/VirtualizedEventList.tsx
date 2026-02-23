@@ -300,16 +300,20 @@ export default function VirtualizedEventList({
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
 
+  const resizeRafId = useRef(0);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerHeight(entry.contentRect.height);
-      }
+      cancelAnimationFrame(resizeRafId.current);
+      resizeRafId.current = requestAnimationFrame(() => {
+        for (const entry of entries) {
+          setContainerHeight(entry.contentRect.height);
+        }
+      });
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => { ro.disconnect(); cancelAnimationFrame(resizeRafId.current); };
   }, []);
 
   const rafId = useRef(0);
@@ -411,7 +415,7 @@ export default function VirtualizedEventList({
       {/* Main area: table + filter sidebar */}
       <div className="flex flex-1 min-h-0">
         {/* Table container */}
-        <div className="flex-1 min-w-0 flex flex-col rounded-lg border border-[#21262d] overflow-hidden bg-[#0d1117]">
+        <div className="flex-1 min-w-0 flex flex-col rounded-lg border border-[#21262d] overflow-hidden bg-[#0d1117]" style={{ contain: 'layout style paint' }}>
           {isLoading && (
             <div className="flex-1 flex items-center justify-center">
               <div className="flex items-center gap-3 text-gray-500 text-sm">
