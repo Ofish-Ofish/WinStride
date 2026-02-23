@@ -1,0 +1,19 @@
+title: Rubeus Logon Process Registration
+id: a0000001-0000-0000-0000-000000000052
+name: rubeus_logon_process
+status: stable
+description: Rubeus registers a trusted logon process with LSA using the distinctive name "User32LogonProcesss" (deliberate double-s typo). Near-zero false positives.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.credential-access
+    - attack.t1558.003
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4611
+        LogonProcessName: 'User32LogonProcesss'
+    condition: selection
+level: high

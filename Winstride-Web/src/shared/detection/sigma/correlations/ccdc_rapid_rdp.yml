@@ -1,0 +1,18 @@
+title: Rapid RDP Across Multiple Machines
+id: c0000001-0000-0000-0000-000000000008
+status: stable
+description: One user RDPing to 3 or more different machines in 30 minutes — indicates red team lateral movement via Remote Desktop.
+tags:
+    - attack.lateral-movement
+    - attack.t1021.001
+level: high
+correlation:
+    type: value_count
+    rules:
+        - a0000001-0000-0000-0000-000000000013
+    group-by:
+        - TargetUserName
+    timespan: 30m
+    condition:
+        field: Computer
+        gte: 3

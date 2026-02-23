@@ -1,0 +1,18 @@
+title: Security Group Type Changed
+id: a0000001-0000-0000-0000-000000000042
+name: group_type_changed
+status: stable
+description: A security group type was changed. Converting a security group to distribution silently strips all ACL-based access restrictions.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1098
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4764
+    condition: selection
+level: high

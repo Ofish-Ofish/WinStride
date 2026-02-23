@@ -1,0 +1,19 @@
+title: Potential Golden Ticket - RC4 TGT Request
+id: a0000001-0000-0000-0000-000000000026
+name: golden_ticket_rc4
+status: stable
+description: Kerberos TGT requested with RC4 encryption. Modern domains use AES — RC4 TGT requests may indicate Golden Ticket usage.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.credential-access
+    - attack.t1558.001
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4768
+        TicketEncryptionType: '0x17'
+    condition: selection
+level: high

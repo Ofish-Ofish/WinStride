@@ -1,0 +1,23 @@
+title: Pass-the-Hash Detected (NTLM Network Logon with Zero Key Length)
+id: a0000001-0000-0000-0000-000000000012
+name: pass_the_hash
+status: stable
+description: Network logon using NTLM with key length 0 indicates hash-based authentication (Mimikatz, pass-the-hash). Legitimate NTLM uses non-zero key lengths.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.lateral-movement
+    - attack.t1550.002
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4624
+        LogonType: '3'
+        AuthenticationPackageName: 'NTLM'
+        KeyLength: '0'
+    filter_anonymous:
+        TargetUserName: 'ANONYMOUS LOGON'
+    condition: selection and not filter_anonymous
+level: high

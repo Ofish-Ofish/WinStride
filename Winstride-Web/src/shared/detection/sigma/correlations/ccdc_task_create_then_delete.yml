@@ -1,0 +1,17 @@
+title: Scheduled Task Created Then Deleted (Execute and Cleanup)
+id: c0000001-0000-0000-0000-000000000009
+status: stable
+description: A scheduled task was created and then deleted within 5 minutes — the textbook Impacket atexec.py pattern of execute-and-cleanup.
+tags:
+    - attack.execution
+    - attack.t1053.005
+level: high
+correlation:
+    type: temporal_ordered
+    rules:
+        - a0000001-0000-0000-0000-000000000011
+        - a0000001-0000-0000-0000-000000000043
+    group-by:
+        - SubjectUserName
+    timespan: 5m
+    condition: {}

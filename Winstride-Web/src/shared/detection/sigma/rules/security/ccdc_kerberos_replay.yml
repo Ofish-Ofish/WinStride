@@ -1,0 +1,18 @@
+title: Kerberos Replay Attack Detected
+id: a0000001-0000-0000-0000-000000000054
+name: kerberos_replay
+status: stable
+description: Windows detected a Kerberos ticket replay (KRB_AP_ERR_REPEAT). Near-zero false positives — directly indicates ticket reuse attack.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.credential-access
+    - attack.t1558
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4649
+    condition: selection
+level: high

@@ -1,0 +1,18 @@
+title: Kerberos Policy Changed
+id: a0000001-0000-0000-0000-000000000038
+name: kerberos_policy_changed
+status: stable
+description: Kerberos authentication policy was changed. Attackers weaken ticket lifetimes or encryption settings to facilitate golden/silver ticket attacks.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1484.001
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4713
+    condition: selection
+level: high

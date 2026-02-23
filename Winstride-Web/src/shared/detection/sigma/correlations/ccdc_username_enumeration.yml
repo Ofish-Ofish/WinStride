@@ -1,0 +1,17 @@
+title: Username Enumeration Burst
+id: c0000001-0000-0000-0000-000000000003
+status: stable
+description: 10 or more failed logons with non-existent usernames from the same source IP within 5 minutes — systematic username enumeration.
+tags:
+    - attack.credential-access
+    - attack.t1589.001
+level: high
+correlation:
+    type: event_count
+    rules:
+        - a0000001-0000-0000-0000-000000000021
+    group-by:
+        - IpAddress
+    timespan: 5m
+    condition:
+        gte: 10

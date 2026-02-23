@@ -1,0 +1,18 @@
+title: Firewall Rule Added
+id: a0000001-0000-0000-0000-000000000023
+name: firewall_rule_added
+status: stable
+description: A new Windows Firewall rule was added. Red teams add rules to allow C2 traffic or bind shells through the firewall.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1562.004
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4946
+    condition: selection
+level: medium

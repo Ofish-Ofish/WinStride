@@ -1,0 +1,22 @@
+title: Audit Policy Disabled
+id: a0000001-0000-0000-0000-000000000002
+name: audit_policy_disabled
+status: stable
+description: A system audit policy was changed to remove auditing. Red teams disable logging before performing malicious actions.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1562.002
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4719
+    disabled:
+        AuditPolicyChanges|contains:
+            - '%%8448'
+            - '%%8450'
+    condition: selection and 1 of disabled
+level: critical

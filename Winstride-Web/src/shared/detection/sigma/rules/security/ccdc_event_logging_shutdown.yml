@@ -1,0 +1,18 @@
+title: Event Logging Service Shutdown
+id: a0000001-0000-0000-0000-000000000037
+name: event_logging_shutdown
+status: stable
+description: The Windows Event Log service was shut down. Attackers stop logging to prevent their actions from being recorded.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1562.002
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 1100
+    condition: selection
+level: high

@@ -1,0 +1,17 @@
+title: Kerberoasting Burst - Mass RC4 Service Ticket Requests
+id: c0000001-0000-0000-0000-000000000004
+status: stable
+description: 5 or more RC4-encrypted Kerberos service ticket requests from the same source within 1 minute — Kerberoasting tool activity.
+tags:
+    - attack.credential-access
+    - attack.t1558.003
+level: critical
+correlation:
+    type: event_count
+    rules:
+        - a0000001-0000-0000-0000-000000000015
+    group-by:
+        - IpAddress
+    timespan: 1m
+    condition:
+        gte: 5

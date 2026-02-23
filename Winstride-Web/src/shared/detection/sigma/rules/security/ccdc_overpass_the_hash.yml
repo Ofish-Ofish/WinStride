@@ -1,0 +1,21 @@
+title: Overpass-the-Hash (Mimikatz sekurlsa::pth)
+id: a0000001-0000-0000-0000-000000000050
+name: overpass_the_hash
+status: stable
+description: Detects Mimikatz sekurlsa::pth which uses LogonType 9 (NewCredentials) with the seclogo logon process. Different from standard PtH. Only known FP is runas /netonly.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.lateral-movement
+    - attack.t1550.002
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4624
+        LogonType: '9'
+        LogonProcessName: 'seclogo'
+        AuthenticationPackageName: 'Negotiate'
+    condition: selection
+level: high

@@ -44,7 +44,7 @@ const SERVICE_MAP: Record<string, Module> = {
 /*  Severity mapping                                                    */
 /* ------------------------------------------------------------------ */
 
-const LEVEL_MAP: Record<string, Severity> = {
+export const LEVEL_MAP: Record<string, Severity> = {
   informational: 'info',
   low: 'low',
   medium: 'medium',
@@ -130,8 +130,9 @@ function extractMitre(tags?: string[]): string | undefined {
 /*  Compile one Sigma rule YAML document into a DetectionRule          */
 /* ------------------------------------------------------------------ */
 
-interface SigmaRuleYaml {
+export interface SigmaRuleYaml {
   title?: string;
+  name?: string;
   id?: string;
   description?: string;
   level?: string;
@@ -139,11 +140,15 @@ interface SigmaRuleYaml {
   tags?: string[];
   logsource?: { category?: string; service?: string; product?: string };
   detection?: Record<string, unknown>;
+  correlation?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
 export function compileSigmaRule(raw: SigmaRuleYaml): DetectionRule | null {
-  const { title, id, description, level, tags, logsource, detection } = raw;
+  // Skip correlation documents — handled by correlationCompiler
+  if (raw.correlation) return null;
+
+  const { title, name: sigmaName, id, description, level, tags, logsource, detection } = raw;
 
   if (!detection || !logsource) return null;
 
@@ -219,6 +224,8 @@ export function compileSigmaRule(raw: SigmaRuleYaml): DetectionRule | null {
     mitre,
     description: description ?? '',
     eventIds: detectedEventIds,
+    sigmaId: id,
+    sigmaName: sigmaName,
     match: matchFn,
   };
 }

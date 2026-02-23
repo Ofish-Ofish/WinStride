@@ -1,0 +1,18 @@
+title: Scheduled Task Created
+id: a0000001-0000-0000-0000-000000000011
+name: scheduled_task_created
+status: stable
+description: A new scheduled task was created. Red teams use scheduled tasks to maintain persistence and re-establish access.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1053.005
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 4698
+    condition: selection
+level: high

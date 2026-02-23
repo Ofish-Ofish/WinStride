@@ -1,0 +1,17 @@
+title: Account Created Then Added to Administrators
+id: c0000001-0000-0000-0000-000000000005
+status: stable
+description: A new account was created and then added to the Administrators group within 10 minutes — the classic CCDC red team backdoor playbook.
+tags:
+    - attack.persistence
+    - attack.t1136
+level: critical
+correlation:
+    type: temporal_ordered
+    rules:
+        - a0000001-0000-0000-0000-000000000003
+        - a0000001-0000-0000-0000-000000000005
+    group-by:
+        - SubjectUserName
+    timespan: 10m
+    condition: {}

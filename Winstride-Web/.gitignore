@@ -23,5 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Sigma rules (fetched via scripts/fetch-sigma-rules.sh)
-src/shared/detection/sigma/rules/
+# Sigma rules — ignore fetched rules, track hand-crafted CCDC security rules
+src/shared/detection/sigma/rules/*
+!src/shared/detection/sigma/rules/security/
