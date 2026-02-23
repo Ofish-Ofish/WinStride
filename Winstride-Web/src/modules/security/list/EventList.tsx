@@ -1,11 +1,9 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchEvents } from '../../../api/client';
 import GraphFilterPanel from '../graph/GraphFilterPanel';
 import { DEFAULT_FILTERS, resolveTriState, type GraphFilters } from '../shared/filterTypes';
-import { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount } from '../shared/eventMeta';
+import { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount, ALL_EVENT_IDS } from '../shared/eventMeta';
 import { loadFiltersFromStorage, saveFiltersToStorage } from '../shared/filterSerializer';
-import { buildODataFilter } from '../shared/buildODataFilter';
+import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
 import type { WinEvent } from '../shared/types';
 import type { ColumnDef } from '../../../shared/listUtils';
 import { relativeTime, applySearch } from '../../../shared/listUtils';
@@ -94,23 +92,13 @@ export default function EventList({ visible }: { visible: boolean }) {
     return () => clearTimeout(t);
   }, [search]);
 
-  /* ---- OData filter ---- */
-  const odataFilter = useMemo(
-    () => buildODataFilter(filters),
-    [filters.eventFilters, filters.timeStart, filters.timeEnd],
-  );
-
   /* ---- Data fetch ---- */
-  const { data: rawEvents, isLoading, error } = useQuery<WinEvent[]>({
-    queryKey: ['events', 'security-list', odataFilter],
-    queryFn: () => fetchEvents({
-      $filter: odataFilter,
-      $select: 'id,eventId,level,machineName,timeCreated,eventData',
-      $orderby: 'timeCreated desc',
-      $top: '100',
-    }),
-    refetchInterval: 30_000,
-    enabled: visible,
+  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
+    logName: 'Security',
+    allEventIds: ALL_EVENT_IDS,
+    eventFilters: filters.eventFilters,
+    timeStart: filters.timeStart,
+    timeEnd: filters.timeEnd,
   });
 
   const sev = useSeverityIntegration(rawEvents, 'security');
@@ -278,6 +266,9 @@ export default function EventList({ visible }: { visible: boolean }) {
       visible={visible}
       isLoading={isLoading}
       error={!!error}
+      loadedCount={loadedCount}
+      totalCount={totalCount}
+      isComplete={isComplete}
       columns={COLUMNS}
       columnsStorageKey="winstride:listColumns"
       searchPlaceholder="Search... (ip:192.168 user:admin)"
@@ -303,7 +294,7 @@ export default function EventList({ visible }: { visible: boolean }) {
       showFilters={showFilters}
       onToggleFilters={toggleFilters}
       filteredEvents={severityFilteredEvents}
-      rawCount={rawEvents?.length ?? 0}
+      rawCount={rawEvents.length}
       search={search}
       onSearchChange={setSearch}
       jsonMapper={securityJsonMapper}
