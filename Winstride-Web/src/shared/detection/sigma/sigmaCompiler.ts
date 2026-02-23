@@ -224,6 +224,17 @@ export function compileSigmaRule(raw: SigmaRuleYaml): DetectionRule | null {
     return conditionAsts.some((ast) => evaluateCondition(ast!, getBlock, blockNames));
   };
 
+  // Memoize per event — single-event detection populates this cache,
+  // correlation rules get O(1) lookups instead of re-running predicates.
+  const _matchMemo = new WeakMap<WinEvent, boolean>();
+  const match = (event: WinEvent): boolean => {
+    const cached = _matchMemo.get(event);
+    if (cached !== undefined) return cached;
+    const result = matchFn(event);
+    _matchMemo.set(event, result);
+    return result;
+  };
+
   return {
     id: ruleId,
     name: title ?? 'Unnamed Sigma Rule',
@@ -234,7 +245,7 @@ export function compileSigmaRule(raw: SigmaRuleYaml): DetectionRule | null {
     eventIds: detectedEventIds,
     sigmaId: id,
     sigmaName: sigmaName,
-    match: matchFn,
+    match,
   };
 }
 

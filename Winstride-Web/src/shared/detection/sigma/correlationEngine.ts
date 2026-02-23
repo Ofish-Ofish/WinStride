@@ -135,8 +135,14 @@ function collectPerRuleMatches(
   return byRule;
 }
 
+const _eventTimeCache = new WeakMap<WinEvent, number>();
+
 function eventTime(e: WinEvent): number {
-  return new Date(e.timeCreated).getTime();
+  const cached = _eventTimeCache.get(e);
+  if (cached !== undefined) return cached;
+  const t = new Date(e.timeCreated).getTime();
+  _eventTimeCache.set(e, t);
+  return t;
 }
 
 /* ------------------------------------------------------------------ */
