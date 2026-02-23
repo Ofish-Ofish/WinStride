@@ -297,8 +297,12 @@ export default function VirtualizedEventList({
     return () => ro.disconnect();
   }, []);
 
+  const rafId = useRef(0);
   const handleScroll = useCallback(() => {
-    if (scrollRef.current) setScrollTop(scrollRef.current.scrollTop);
+    cancelAnimationFrame(rafId.current);
+    rafId.current = requestAnimationFrame(() => {
+      if (scrollRef.current) setScrollTop(scrollRef.current.scrollTop);
+    });
   }, []);
 
   const totalHeight = sortedEvents.length * ROW_HEIGHT;

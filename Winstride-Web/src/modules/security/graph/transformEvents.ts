@@ -64,7 +64,7 @@ function extractLogonInfo(event: WinEvent): LogonInfo | null {
       workstationName: getDataField(dataArray, 'WorkstationName'),
       processName: getDataField(dataArray, 'ProcessName'),
       keyLength: keyLengthStr ? parseInt(keyLengthStr, 10) : -1,
-      elevatedToken: elevatedStr === '%%1842',
+      elevatedToken: elevatedStr === '%%1842' || event.eventId === 4672,
       failureStatus: getDataField(dataArray, 'Status'),
       failureSubStatus: getDataField(dataArray, 'SubStatus'),
     };
