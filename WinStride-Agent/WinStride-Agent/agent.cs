@@ -3,6 +3,7 @@ using System.Text;
 using Newtonsoft.Json;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using WinStrideAgent.Services;
 class Agent
 {
     private static readonly HttpClient client = new HttpClient();
@@ -52,6 +53,25 @@ class Agent
             await Task.Delay(TimeSpan.FromSeconds(startDelaySeconds));
 
             _ = StartHeartbeatLoop(BaseUrl, fullConfig.Global.HeartbeatInterval);
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    Logger.WriteLine("[Network] Background loop starting...");
+                    NetworkService networkService = new NetworkService(BaseUrl, client);
+                    while (true)
+                    {
+                        Guid pulseId = Guid.NewGuid();
+                        await networkService.SyncNetworkData(pulseId);
+                        await Task.Delay(TimeSpan.FromSeconds(10));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.WriteLine($"[FATAL] Network Loop crashed: {ex.Message}");
+                }
+            });
 
             List<Task> monitorTasks = new List<Task>();
 
