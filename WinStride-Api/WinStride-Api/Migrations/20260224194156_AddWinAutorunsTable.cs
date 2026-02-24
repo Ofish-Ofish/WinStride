@@ -13,7 +13,7 @@ namespace WinStride_Api.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
-                name: "AutorunViews",
+                name: "WinAutoruns",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "integer", nullable: false)
@@ -41,22 +41,22 @@ namespace WinStride_Api.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_AutorunViews", x => x.Id);
+                    table.PrimaryKey("PK_WinAutoruns", x => x.Id);
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_AutorunViews_BatchId",
-                table: "AutorunViews",
+                name: "IX_WinAutoruns_BatchId",
+                table: "WinAutoruns",
                 column: "BatchId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_AutorunViews_Entry",
-                table: "AutorunViews",
+                name: "IX_WinAutoruns_Entry",
+                table: "WinAutoruns",
                 column: "Entry");
 
             migrationBuilder.CreateIndex(
-                name: "IX_AutorunViews_MachineName_TimeSynced",
-                table: "AutorunViews",
+                name: "IX_WinAutoruns_MachineName_TimeSynced",
+                table: "WinAutoruns",
                 columns: new[] { "MachineName", "TimeSynced" },
                 descending: new[] { false, true });
         }
@@ -65,7 +65,7 @@ namespace WinStride_Api.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "AutorunViews");
+                name: "WinAutoruns");
         }
     }
 }

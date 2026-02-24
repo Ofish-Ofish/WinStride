@@ -39,7 +39,7 @@ namespace WinStrideApi.Data
 
             modelBuilder.Entity<AutorunView>(entity =>
             {
-                entity.ToTable("AutorunViews");
+                entity.ToTable("WinAutoruns");
 
                 entity.HasIndex(e => e.BatchId);
 

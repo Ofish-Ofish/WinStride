@@ -116,7 +116,7 @@ namespace WinStride_Api.Migrations
                     b.HasIndex("MachineName", "TimeSynced")
                         .IsDescending(false, true);
 
-                    b.ToTable("AutorunViews", (string)null);
+                    b.ToTable("WinAutoruns", (string)null);
                 });
 
             modelBuilder.Entity("WinStrideApi.Models.Heartbeat", b =>
