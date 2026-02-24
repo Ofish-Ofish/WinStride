@@ -12,6 +12,7 @@ namespace WinStrideApi.Data
         public DbSet<WinEvent> WinEvents { get; set; }
         public DbSet<Heartbeat> Heartbeats { get; set; }
         public DbSet<TCPView> NetworkConnections { get; set; }
+        public DbSet<AutorunView> AutorunViews { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -29,10 +30,22 @@ namespace WinStrideApi.Data
             modelBuilder.Entity<TCPView>(entity =>
             {
                 entity.ToTable("WinNetworkConnections");
-                
+
                 entity.HasIndex(e => e.BatchId);
 
                 entity.HasIndex(e => new { e.MachineName, e.TimeCreated })
+                      .IsDescending(false, true);
+            });
+
+            modelBuilder.Entity<AutorunView>(entity =>
+            {
+                entity.ToTable("AutorunViews");
+
+                entity.HasIndex(e => e.BatchId);
+
+                entity.HasIndex(e => e.Entry);
+
+                entity.HasIndex(e => new { e.MachineName, e.TimeSynced })
                       .IsDescending(false, true);
             });
         }
