@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { WinEvent } from '../shared/types';
 import { LOGON_TYPE_LABELS, FAILURE_STATUS_LABELS } from '../shared/eventMeta';
 import { parseEventData } from './listColumns';
@@ -149,7 +150,7 @@ function formatTimestamp(iso: string): string {
   return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}  ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-export default function EventDetailRow({ event, detections }: { event: WinEvent; detections?: Detection[] }) {
+export default memo(function EventDetailRow({ event, detections }: { event: WinEvent; detections?: Detection[] }) {
   const data = parseEventData(event);
 
   if (!data) {
@@ -275,4 +276,4 @@ export default function EventDetailRow({ event, detections }: { event: WinEvent;
       <RawDataToggle raw={data.raw} />
     </div>
   );
-}
+});

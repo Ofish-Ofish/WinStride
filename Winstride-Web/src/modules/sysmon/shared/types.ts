@@ -1,3 +1,14 @@
+export interface CorrelatedScript {
+  scriptBlockText: string;
+  scriptBlockId: string;
+  path: string;
+  isSuspicious: boolean;
+  suspiciousMatches: string[];
+  timestamp: string;
+  machineName: string;
+  pid: number;
+}
+
 export interface ParsedProcessCreate {
   image: string;
   imageName: string;

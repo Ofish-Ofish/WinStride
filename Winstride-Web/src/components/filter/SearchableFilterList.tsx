@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useDeferredValue, memo } from 'react';
 import type { FilterState } from './filterPrimitives';
 import { countVisible, cycleMap } from './filterPrimitives';
 import CollapsibleSection from './CollapsibleSection';
@@ -11,7 +11,7 @@ interface QuickActionDef {
   onClick: () => void;
 }
 
-export default function SearchableFilterList<T extends string | number>({
+function SearchableFilterList<T extends string | number>({
   title,
   items,
   filterMap,
@@ -37,14 +37,15 @@ export default function SearchableFilterList<T extends string | number>({
   defaultOpen?: boolean;
 }) {
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
 
   const visibleCount = countVisible(items, filterMap);
 
   const filtered = useMemo(
-    () => searchable && search
-      ? items.filter((i) => String(i).toLowerCase().includes(search.toLowerCase()))
+    () => searchable && deferredSearch
+      ? items.filter((i) => String(i).toLowerCase().includes(deferredSearch.toLowerCase()))
       : items,
-    [items, search, searchable],
+    [items, deferredSearch, searchable],
   );
 
   const right = (
@@ -104,3 +105,5 @@ export default function SearchableFilterList<T extends string | number>({
     </CollapsibleSection>
   );
 }
+
+export default memo(SearchableFilterList) as typeof SearchableFilterList;

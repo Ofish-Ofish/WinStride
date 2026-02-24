@@ -79,7 +79,7 @@ function getExtraSearchFields(e: WinEvent, severityLabel: string): Record<string
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 
-export default function EventList({ visible }: { visible: boolean }) {
+export default function EventList({ visible = true }: { visible?: boolean }) {
   /* ---- Filter state (shared with graph view) ---- */
   const [filters, setFilters] = useState<GraphFilters>(() => loadFiltersFromStorage() ?? DEFAULT_FILTERS);
   const [showFilters, setShowFilters] = useState(false);

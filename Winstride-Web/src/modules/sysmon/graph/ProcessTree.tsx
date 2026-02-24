@@ -3,11 +3,15 @@ import { type SysmonFilters } from '../shared/filterTypes';
 import type { FilterState } from '../../../components/filter/filterPrimitives';
 import { saveSysmonFilters } from '../shared/filterSerializer';
 import { SYSMON_EVENT_IDS } from '../shared/eventMeta';
+import { PS_EVENT_IDS } from '../../powershell/shared/eventMeta';
 import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
 import { parseProcessCreate, parseNetworkConnect, parseFileCreate } from '../shared/parseSysmonEvent';
+import { parseScriptBlock, findSuspiciousKeywords } from '../../powershell/shared/parsePSEvent';
 import { INTEGRITY_COLORS } from '../shared/eventMeta';
+import { getSystemField } from '../../../shared/eventParsing';
 import SysmonFilterPanel from '../SysmonFilterPanel';
-import { buildAggregatedTree, type AggregatedNode } from './transformSysmon';
+import { buildAggregatedTree, type AggregatedNode, type ScriptCorrelationMap } from './transformSysmon';
+import type { CorrelatedScript } from '../shared/types';
 import { processTreeStyles, processTreeLayout } from './processTreeStyles';
 import type { WinEvent } from '../../security/shared/types';
 import { resolveTriState } from '../../../components/filter/filterPrimitives';
@@ -58,6 +62,10 @@ function Legend() {
         <span className="w-3 h-3 rounded-sm bg-[#f0883e] inline-block" />
         File Dir
       </span>
+      <span className="flex items-center gap-2">
+        <span className="w-3 h-3 rounded-full bg-[#3b82f6] ring-2 ring-[#da8ee7] inline-block" />
+        Has Scripts
+      </span>
     </div>
   );
 }
@@ -82,6 +90,74 @@ function DetectionsSummary({ detections }: { detections: Detection[] }) {
                 {SEVERITY_LABELS[d.severity]}
               </span>
               <span className="text-[11px] text-gray-200 truncate">{d.ruleName}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ScriptBlocksSection({ scripts }: { scripts: CorrelatedScript[] }) {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const sorted = useMemo(() => [...scripts].sort((a, b) => a.timestamp.localeCompare(b.timestamp)), [scripts]);
+
+  return (
+    <div className="mt-3 pt-2 border-t border-[#30363d]">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[#da8ee7] text-[11px] font-semibold">Script Blocks</span>
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#da8ee7]/20 text-[#da8ee7]">
+          {scripts.length}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {sorted.map((script, i) => {
+          const isOpen = expandedIdx === i;
+          const preview = script.scriptBlockText.length > 200
+            ? script.scriptBlockText.slice(0, 200) + '...'
+            : script.scriptBlockText;
+          const time = new Date(script.timestamp).toLocaleTimeString();
+
+          return (
+            <div key={script.scriptBlockId || i} className="bg-[#0d1117] border border-[#21262d] rounded">
+              <button
+                onClick={() => setExpandedIdx(isOpen ? null : i)}
+                className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-[#161b22] transition-colors"
+              >
+                <span className="text-[10px] text-gray-300 shrink-0">{time}</span>
+                {script.path && (
+                  <span className="text-[10px] text-[#79c0ff] font-mono truncate">{script.path}</span>
+                )}
+                {script.suspiciousMatches.length > 0 && (
+                  <span className="text-[9px] font-semibold px-1 py-0.5 rounded bg-[#f85149]/20 text-[#ff7b72] shrink-0">
+                    suspicious
+                  </span>
+                )}
+                <span className="ml-auto text-[10px] text-gray-300 shrink-0">{isOpen ? '\u25B2' : '\u25BC'}</span>
+              </button>
+              {isOpen ? (
+                <div className="px-2.5 pb-2.5">
+                  {script.suspiciousMatches.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-1.5">
+                      {script.suspiciousMatches.map((kw) => (
+                        <span key={kw} className="text-[9px] font-semibold px-1 py-0.5 rounded bg-[#f85149]/15 text-[#ff7b72]">
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <pre className="font-mono text-[10px] text-gray-200 whitespace-pre-wrap break-all max-h-60 overflow-y-auto bg-[#010409] rounded p-2">
+                    {script.scriptBlockText}
+                  </pre>
+                  <div className="mt-1 text-[9px] text-gray-300">
+                    PID {script.pid} &middot; {script.machineName}
+                  </div>
+                </div>
+              ) : (
+                <div className="px-2.5 pb-2 font-mono text-[10px] text-gray-300 truncate">
+                  {preview}
+                </div>
+              )}
             </div>
           );
         })}
@@ -201,6 +277,8 @@ function NodeDetail({ node, detections }: { node: AggregatedNode; detections?: D
         </div>
       )}
 
+      {node.scriptBlocks.length > 0 && <ScriptBlocksSection scripts={node.scriptBlocks} />}
+
       {detections && detections.length > 0 && <DetectionsSummary detections={detections} />}
     </div>
   );
@@ -241,7 +319,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     document.addEventListener('mouseup', onUp);
   }, [panelWidth]);
 
-  /* ---- Data fetch ---- */
+  /* ---- Data fetch: Sysmon events ---- */
   const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
     logName: 'Microsoft-Windows-Sysmon/Operational',
     allEventIds: SYSMON_EVENT_IDS,
@@ -250,8 +328,92 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     timeEnd: filters.timeEnd,
   }, { enabled: visible });
 
+  /* ---- Data fetch: PowerShell events for correlation ---- */
+  const psAllSelected = useMemo(() => new Map<number, FilterState>(PS_EVENT_IDS.map((id) => [id, 'select'])), []);
+  const { events: psEvents } = useModuleEvents({
+    logName: 'Microsoft-Windows-PowerShell/Operational',
+    allEventIds: PS_EVENT_IDS,
+    eventFilters: psAllSelected,
+    timeStart: filters.timeStart,
+    timeEnd: filters.timeEnd,
+  }, { enabled: visible });
+
+  /* ---- Build PowerShell PID correlation map ---- */
+  const psCorrelation = useMemo<ScriptCorrelationMap>(() => {
+    const map: ScriptCorrelationMap = new Map();
+    for (const event of psEvents) {
+      if (event.eventId !== 4104) continue;
+      const parsed = parseScriptBlock(event);
+      if (!parsed || !parsed.scriptBlockText) continue;
+
+      const pidStr = getSystemField(event, 'Execution_ProcessID');
+      const pid = parseInt(pidStr, 10);
+      if (!pid) continue;
+
+      const key = `${pid}:${event.machineName}`;
+      const script: CorrelatedScript = {
+        scriptBlockText: parsed.scriptBlockText,
+        scriptBlockId: parsed.scriptBlockId,
+        path: parsed.path,
+        isSuspicious: parsed.isSuspicious,
+        suspiciousMatches: parsed.suspiciousMatches.length > 0
+          ? parsed.suspiciousMatches
+          : findSuspiciousKeywords(parsed.scriptBlockText),
+        timestamp: event.timeCreated,
+        machineName: event.machineName,
+        pid,
+      };
+
+      const existing = map.get(key);
+      if (existing) existing.push(script);
+      else map.set(key, [script]);
+    }
+    return map;
+  }, [psEvents]);
+
+  /** Detect machine mismatch: PS script blocks exist but from different machines than Sysmon PS processes */
+  const psCorrelationHint = useMemo(() => {
+    if (psCorrelation.size === 0) return null;
+
+    // Machines that have PS script blocks
+    const psMachines = new Set<string>();
+    for (const key of psCorrelation.keys()) {
+      psMachines.add(key.split(':').slice(1).join(':'));
+    }
+
+    // Machines that have Sysmon powershell.exe processes
+    const sysmonPsMachines = new Set<string>();
+    for (const event of rawEvents) {
+      if (event.eventId !== 1) continue;
+      const proc = parseProcessCreate(event);
+      if (proc && (proc.imageName.toLowerCase() === 'powershell.exe' || proc.imageName.toLowerCase() === 'pwsh.exe')) {
+        sysmonPsMachines.add(event.machineName);
+      }
+    }
+
+    // Check if any Sysmon PS machine has PS script block data
+    const hasOverlap = [...sysmonPsMachines].some((m) => psMachines.has(m));
+    if (hasOverlap) return null;
+
+    if (sysmonPsMachines.size > 0 && psMachines.size > 0) {
+      const sysmonList = [...sysmonPsMachines].join(', ');
+      const psList = [...psMachines].join(', ');
+      return `PowerShell Script Block Logging not available on ${sysmonList}. Script blocks found on: ${psList}`;
+    }
+    return null;
+  }, [psCorrelation, rawEvents]);
+
   /* ---- Severity integration ---- */
   const { detections: sevDetections, filterBySeverity } = useSeverityIntegration(rawEvents, 'sysmon');
+
+  /* ---- Cache parsed results to avoid re-parsing per filter pass ---- */
+  const parsedCache = useMemo(() => {
+    const cache = new Map<number, { proc: ReturnType<typeof parseProcessCreate>; net: ReturnType<typeof parseNetworkConnect>; file: ReturnType<typeof parseFileCreate> }>();
+    for (const e of rawEvents) {
+      cache.set(e.id, { proc: parseProcessCreate(e), net: parseNetworkConnect(e), file: parseFileCreate(e) });
+    }
+    return cache;
+  }, [rawEvents]);
 
   /* ---- Available values ---- */
   const { availableMachines, availableProcesses, availableUsers } = useMemo(() => {
@@ -261,12 +423,10 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     const users = new Set<string>();
     for (const e of rawEvents) {
       machines.add(e.machineName);
-      const proc = parseProcessCreate(e);
-      const net = parseNetworkConnect(e);
-      const file = parseFileCreate(e);
-      const imageName = proc?.imageName ?? net?.imageName ?? file?.imageName;
+      const cached = parsedCache.get(e.id)!;
+      const imageName = cached.proc?.imageName ?? cached.net?.imageName ?? cached.file?.imageName;
       if (imageName) processes.add(imageName);
-      const user = proc?.user ?? net?.user ?? file?.user;
+      const user = cached.proc?.user ?? cached.net?.user ?? cached.file?.user;
       if (user) users.add(user);
     }
     return {
@@ -274,7 +434,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
       availableProcesses: [...processes].sort(),
       availableUsers: [...users].sort(),
     };
-  }, [rawEvents]);
+  }, [rawEvents, parsedCache]);
 
   /* ---- Client-side filtering + aggregated tree build ---- */
   const treeData = useMemo(() => {
@@ -298,10 +458,8 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     if (filters.processFilters.size > 0) {
       const allowed = new Set(resolveTriState(availableProcesses, filters.processFilters));
       events = events.filter((e) => {
-        const proc = parseProcessCreate(e);
-        const net = parseNetworkConnect(e);
-        const file = parseFileCreate(e);
-        const imageName = proc?.imageName ?? net?.imageName ?? file?.imageName;
+        const cached = parsedCache.get(e.id);
+        const imageName = cached?.proc?.imageName ?? cached?.net?.imageName ?? cached?.file?.imageName;
         if (!imageName) return true;
         return allowed.has(imageName);
       });
@@ -313,9 +471,9 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
       const allowed = new Set(resolveTriState(allLevels, filters.integrityFilters));
       events = events.filter((e) => {
         if (e.eventId !== 1) return true;
-        const proc = parseProcessCreate(e);
-        if (!proc?.integrityLevel) return true;
-        return allowed.has(proc.integrityLevel);
+        const cached = parsedCache.get(e.id);
+        if (!cached?.proc?.integrityLevel) return true;
+        return allowed.has(cached.proc.integrityLevel);
       });
     }
 
@@ -323,10 +481,8 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     if (filters.userFilters.size > 0) {
       const allowed = new Set(resolveTriState(availableUsers, filters.userFilters));
       events = events.filter((e) => {
-        const proc = parseProcessCreate(e);
-        const net = parseNetworkConnect(e);
-        const file = parseFileCreate(e);
-        const user = proc?.user ?? net?.user ?? file?.user;
+        const cached = parsedCache.get(e.id);
+        const user = cached?.proc?.user ?? cached?.net?.user ?? cached?.file?.user;
         if (!user) return true;
         return allowed.has(user);
       });
@@ -335,14 +491,15 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     // Severity filter
     events = filterBySeverity(events, filters.severityFilter);
 
-    return buildAggregatedTree(events, hideSystem);
-  }, [rawEvents, filters, availableProcesses, availableUsers, hideSystem, filterBySeverity]);
+    return buildAggregatedTree(events, hideSystem, psCorrelation);
+  }, [rawEvents, filters, availableProcesses, availableUsers, hideSystem, filterBySeverity, psCorrelation, parsedCache]);
 
   /* ---- Prepare graph data with display labels ---- */
   const graphNodes = useMemo(() =>
     treeData.nodes.map((n) => ({
       ...n,
       label: n.count > 1 ? `${n.label} (\u00d7${n.count})` : n.label,
+      hasScripts: n.scriptBlocks.length > 0 ? 'yes' : 'no',
     })),
     [treeData.nodes],
   );
@@ -367,11 +524,23 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
       styles: processTreeStyles,
       layout: processTreeLayout,
       minZoom: 0.15,
-      relayoutOnDataChange: true,
+      relayoutOnDataChange: false,
     },
   );
 
   const selectedNode = selected ? selected.data as unknown as AggregatedNode : null;
+
+  const selectedDetections = useMemo(() => {
+    if (!selectedNode?.eventIds) return [];
+    const seen = new Set<string>();
+    const result: Detection[] = [];
+    for (const eid of selectedNode.eventIds) {
+      for (const d of sevDetections.byEventId.get(eid) ?? []) {
+        if (!seen.has(d.ruleId)) { seen.add(d.ruleId); result.push(d); }
+      }
+    }
+    return result;
+  }, [selectedNode?.eventIds, sevDetections]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -434,21 +603,17 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
             </div>
           )}
 
+          {psCorrelationHint && (
+            <div className="absolute top-3 left-3 right-3 z-10 bg-[#da8ee7]/10 border border-[#da8ee7]/30 rounded-lg px-3 py-2 text-[11px] text-[#da8ee7] backdrop-blur">
+              <span className="font-semibold">PS Correlation:</span> {psCorrelationHint}
+            </div>
+          )}
+
           <div ref={containerRef} className="w-full h-full" />
           {selectedNode && (
             <NodeDetail
               node={selectedNode}
-              detections={(() => {
-                if (!selectedNode.eventIds) return [];
-                const seen = new Set<string>();
-                const result: Detection[] = [];
-                for (const eid of selectedNode.eventIds) {
-                  for (const d of sevDetections.byEventId.get(eid) ?? []) {
-                    if (!seen.has(d.ruleId)) { seen.add(d.ruleId); result.push(d); }
-                  }
-                }
-                return result;
-              })()}
+              detections={selectedDetections}
             />
           )}
         </div>

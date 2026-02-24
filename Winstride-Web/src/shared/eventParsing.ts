@@ -70,6 +70,10 @@ export function getSystemField(event: WinEvent, fieldName: string): string {
       return String(system.Channel ?? '');
     case 'Computer':
       return String(system.Computer ?? '');
+    case 'Execution_ProcessID':
+      return String((system.Execution as Record<string, string>)?.['@ProcessID'] ?? '');
+    case 'Execution_ThreadID':
+      return String((system.Execution as Record<string, string>)?.['@ThreadID'] ?? '');
     default:
       return '';
   }

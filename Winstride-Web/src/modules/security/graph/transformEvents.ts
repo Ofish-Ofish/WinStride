@@ -1,6 +1,7 @@
 import type { WinEvent, LogonInfo, GraphNode, GraphEdge } from '../shared/types';
 import { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount } from '../shared/eventMeta';
 import { getDataField } from '../../../shared/eventParsing';
+import { type MachineAliasMap, resolveMachineName } from '../shared/machineAliases';
 
 // Re-export shared symbols so existing consumers don't all break at once
 export { EVENT_LABELS, LOGON_TYPE_LABELS, isSystemAccount };
@@ -73,10 +74,11 @@ function extractLogonInfo(event: WinEvent): LogonInfo | null {
   }
 }
 
-export function transformEvents(events: WinEvent[]): {
+export function transformEvents(events: WinEvent[], machineAliases?: MachineAliasMap): {
   nodes: GraphNode[];
   edges: GraphEdge[];
 } {
+  const aliases = machineAliases ?? {};
   const logons = events.map(extractLogonInfo).filter(Boolean) as LogonInfo[];
 
   const nodeMap = new Map<string, GraphNode>();
@@ -95,7 +97,8 @@ export function transformEvents(events: WinEvent[]): {
 
   for (const logon of logons) {
     const userId = `user:${logon.targetUserName.toLowerCase()}`;
-    const machineId = `machine:${logon.machineName.toLowerCase()}`;
+    const resolvedMachine = resolveMachineName(logon.machineName, aliases);
+    const machineId = `machine:${resolvedMachine.toLowerCase()}`;
     const isFailed = logon.eventId === 4625;
 
     // Upsert user node
@@ -118,7 +121,7 @@ export function transformEvents(events: WinEvent[]): {
 
     // Upsert machine node
     if (!nodeMap.has(machineId)) {
-      nodeMap.set(machineId, newNode(machineId, logon.machineName, 'machine', false));
+      nodeMap.set(machineId, newNode(machineId, resolvedMachine, 'machine', false));
       machineUsers.set(machineId, new Set());
       nodeAuthPackages.set(machineId, new Set());
     }

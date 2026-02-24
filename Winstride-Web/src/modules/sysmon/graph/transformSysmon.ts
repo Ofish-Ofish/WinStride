@@ -1,4 +1,5 @@
 import type { WinEvent } from '../../security/shared/types';
+import type { CorrelatedScript } from '../shared/types';
 import { parseProcessCreate, parseNetworkConnect, parseFileCreate } from '../shared/parseSysmonEvent';
 
 /* ------------------------------------------------------------------ */
@@ -24,6 +25,8 @@ export interface AggregatedNode {
   maxIntegrity: 'Low' | 'Medium' | 'High' | 'System' | '';
   // event IDs that contributed to this aggregated node (for detection lookup)
   eventIds: number[];
+  // correlated PowerShell script blocks (populated for powershell.exe / pwsh.exe)
+  scriptBlocks: CorrelatedScript[];
 }
 
 export interface AggregatedEdge {
@@ -60,6 +63,16 @@ export const SYSTEM_PROCESSES = new Set([
 /* ------------------------------------------------------------------ */
 
 const MAX_ARRAY = 50;
+const MAX_SCRIPTS = 100;
+
+/** Check if image name is a PowerShell host */
+function isPowerShell(imageName: string): boolean {
+  const lower = imageName.toLowerCase();
+  return lower === 'powershell.exe' || lower === 'pwsh.exe';
+}
+
+/** Correlation map type: key is "pid:machineName" → script blocks */
+export type ScriptCorrelationMap = Map<string, CorrelatedScript[]>;
 
 const INTEGRITY_RANK: Record<string, number> = {
   Low: 0,
@@ -101,6 +114,7 @@ function makeNode(id: string, type: AggregatedNode['type'], label: string): Aggr
     filePaths: [],
     maxIntegrity: '',
     eventIds: [],
+    scriptBlocks: [],
   };
 }
 
@@ -115,144 +129,141 @@ function isSystemProcess(name: string): boolean {
 export function buildAggregatedTree(
   events: WinEvent[],
   hideSystem: boolean,
+  psCorrelation?: ScriptCorrelationMap,
 ): AggregatedTreeData {
   const nodeMap = new Map<string, AggregatedNode>();
   const edgeMap = new Map<string, AggregatedEdge>();
 
-  // ── Pass 1: Process events (Event 1) ──────────────────────────────
+  // ── Single pass over all events ─────────────────────────────────
   for (const event of events) {
-    if (event.eventId !== 1) continue;
-    const proc = parseProcessCreate(event);
-    if (!proc || !proc.imageName) continue;
+    if (event.eventId === 1) {
+      const proc = parseProcessCreate(event);
+      if (!proc || !proc.imageName) continue;
 
-    const childKey = proc.imageName.toLowerCase();
-    const parentKey = proc.parentImageName?.toLowerCase() ?? '';
+      const childKey = proc.imageName.toLowerCase();
+      const parentKey = proc.parentImageName?.toLowerCase() ?? '';
 
-    if (hideSystem && isSystemProcess(proc.imageName) && isSystemProcess(proc.parentImageName)) {
-      continue;
-    }
-
-    // Upsert child process node
-    let childNode = nodeMap.get(childKey);
-    if (!childNode) {
-      childNode = makeNode(childKey, 'process', proc.imageName);
-      nodeMap.set(childKey, childNode);
-    }
-    childNode.count++;
-    childNode.eventIds.push(event.id);
-    addUnique(childNode.users, proc.user);
-    addUnique(childNode.integrityLevels, proc.integrityLevel);
-    addUnique(childNode.commandLines, proc.commandLine);
-    addUnique(childNode.fullPaths, proc.image);
-    childNode.maxIntegrity = higherIntegrity(childNode.maxIntegrity, proc.integrityLevel);
-
-    // Upsert parent process node (if we know the parent)
-    if (parentKey) {
-      let parentNode = nodeMap.get(parentKey);
-      if (!parentNode) {
-        parentNode = makeNode(parentKey, 'process', proc.parentImageName);
-        nodeMap.set(parentKey, parentNode);
+      if (hideSystem && isSystemProcess(proc.imageName) && isSystemProcess(proc.parentImageName)) {
+        continue;
       }
-      addUnique(parentNode.fullPaths, proc.parentImage);
-      addUnique(parentNode.commandLines, proc.parentCommandLine);
 
-      // Upsert spawned edge
-      const edgeId = `spawned-${parentKey}-${childKey}`;
+      let childNode = nodeMap.get(childKey);
+      if (!childNode) {
+        childNode = makeNode(childKey, 'process', proc.imageName);
+        nodeMap.set(childKey, childNode);
+      }
+      childNode.count++;
+      childNode.eventIds.push(event.id);
+      addUnique(childNode.users, proc.user);
+      addUnique(childNode.integrityLevels, proc.integrityLevel);
+      addUnique(childNode.commandLines, proc.commandLine);
+      addUnique(childNode.fullPaths, proc.image);
+      childNode.maxIntegrity = higherIntegrity(childNode.maxIntegrity, proc.integrityLevel);
+
+      if (psCorrelation && isPowerShell(proc.imageName) && proc.processId) {
+        const key = `${proc.processId}:${event.machineName}`;
+        const scripts = psCorrelation.get(key);
+        if (scripts && childNode.scriptBlocks.length < MAX_SCRIPTS) {
+          for (const s of scripts) {
+            if (childNode.scriptBlocks.length >= MAX_SCRIPTS) break;
+            if (!childNode.scriptBlocks.some((x) => x.scriptBlockId === s.scriptBlockId)) {
+              childNode.scriptBlocks.push(s);
+            }
+          }
+        }
+      }
+
+      if (parentKey) {
+        let parentNode = nodeMap.get(parentKey);
+        if (!parentNode) {
+          parentNode = makeNode(parentKey, 'process', proc.parentImageName);
+          nodeMap.set(parentKey, parentNode);
+        }
+        addUnique(parentNode.fullPaths, proc.parentImage);
+        addUnique(parentNode.commandLines, proc.parentCommandLine);
+
+        const edgeId = `spawned-${parentKey}-${childKey}`;
+        let edge = edgeMap.get(edgeId);
+        if (!edge) {
+          edge = { id: edgeId, source: parentKey, target: childKey, type: 'spawned', count: 0, eventIds: [] };
+          edgeMap.set(edgeId, edge);
+        }
+        edge.count++;
+        edge.eventIds.push(event.id);
+      }
+    } else if (event.eventId === 3) {
+      const net = parseNetworkConnect(event);
+      if (!net || !net.destinationIp) continue;
+
+      if (hideSystem && isSystemProcess(net.imageName)) continue;
+
+      const processKey = net.imageName.toLowerCase();
+      const networkKey = `net-${net.destinationIp}`;
+
+      let procNode = nodeMap.get(processKey);
+      if (!procNode) {
+        procNode = makeNode(processKey, 'process', net.imageName);
+        nodeMap.set(processKey, procNode);
+      }
+      addUnique(procNode.users, net.user);
+      addUnique(procNode.fullPaths, net.image);
+
+      let netNode = nodeMap.get(networkKey);
+      if (!netNode) {
+        netNode = makeNode(networkKey, 'network', net.destinationIp);
+        nodeMap.set(networkKey, netNode);
+      }
+      netNode.count++;
+      netNode.eventIds.push(event.id);
+      addUnique(netNode.destinations, `${net.destinationIp}:${net.destinationPort}`);
+      addUnique(netNode.protocols, net.protocol);
+
+      const edgeId = `connected-${processKey}-${networkKey}`;
       let edge = edgeMap.get(edgeId);
       if (!edge) {
-        edge = { id: edgeId, source: parentKey, target: childKey, type: 'spawned', count: 0, eventIds: [] };
+        edge = { id: edgeId, source: processKey, target: networkKey, type: 'connected', count: 0, eventIds: [] };
+        edgeMap.set(edgeId, edge);
+      }
+      edge.count++;
+      edge.eventIds.push(event.id);
+    } else if (event.eventId === 11) {
+      const file = parseFileCreate(event);
+      if (!file || !file.targetFilename) continue;
+
+      if (hideSystem && isSystemProcess(file.imageName)) continue;
+
+      const processKey = file.imageName.toLowerCase();
+
+      const lastSlash = file.targetFilename.lastIndexOf('\\');
+      const directory = lastSlash > 0 ? file.targetFilename.substring(0, lastSlash) : file.targetFilename;
+      const fileKey = `file-${directory}`;
+
+      let procNode = nodeMap.get(processKey);
+      if (!procNode) {
+        procNode = makeNode(processKey, 'process', file.imageName);
+        nodeMap.set(processKey, procNode);
+      }
+      addUnique(procNode.users, file.user);
+      addUnique(procNode.fullPaths, file.image);
+
+      let fileNode = nodeMap.get(fileKey);
+      if (!fileNode) {
+        fileNode = makeNode(fileKey, 'file', directory);
+        nodeMap.set(fileKey, fileNode);
+      }
+      fileNode.count++;
+      fileNode.eventIds.push(event.id);
+      addUnique(fileNode.filePaths, file.targetFilename);
+
+      const edgeId = `created-${processKey}-${fileKey}`;
+      let edge = edgeMap.get(edgeId);
+      if (!edge) {
+        edge = { id: edgeId, source: processKey, target: fileKey, type: 'created', count: 0, eventIds: [] };
         edgeMap.set(edgeId, edge);
       }
       edge.count++;
       edge.eventIds.push(event.id);
     }
-  }
-
-  // ── Pass 2: Network events (Event 3) ─────────────────────────────
-  for (const event of events) {
-    if (event.eventId !== 3) continue;
-    const net = parseNetworkConnect(event);
-    if (!net || !net.destinationIp) continue;
-
-    if (hideSystem && isSystemProcess(net.imageName)) continue;
-
-    const processKey = net.imageName.toLowerCase();
-    const networkKey = `net-${net.destinationIp}`;
-
-    // Upsert process node (source of the connection)
-    let procNode = nodeMap.get(processKey);
-    if (!procNode) {
-      procNode = makeNode(processKey, 'process', net.imageName);
-      nodeMap.set(processKey, procNode);
-    }
-    addUnique(procNode.users, net.user);
-    addUnique(procNode.fullPaths, net.image);
-
-    // Upsert network node
-    let netNode = nodeMap.get(networkKey);
-    if (!netNode) {
-      netNode = makeNode(networkKey, 'network', net.destinationIp);
-      nodeMap.set(networkKey, netNode);
-    }
-    netNode.count++;
-    netNode.eventIds.push(event.id);
-    addUnique(netNode.destinations, `${net.destinationIp}:${net.destinationPort}`);
-    addUnique(netNode.protocols, net.protocol);
-
-    // Upsert connected edge
-    const edgeId = `connected-${processKey}-${networkKey}`;
-    let edge = edgeMap.get(edgeId);
-    if (!edge) {
-      edge = { id: edgeId, source: processKey, target: networkKey, type: 'connected', count: 0, eventIds: [] };
-      edgeMap.set(edgeId, edge);
-    }
-    edge.count++;
-    edge.eventIds.push(event.id);
-  }
-
-  // ── Pass 3: File events (Event 11) ────────────────────────────────
-  for (const event of events) {
-    if (event.eventId !== 11) continue;
-    const file = parseFileCreate(event);
-    if (!file || !file.targetFilename) continue;
-
-    if (hideSystem && isSystemProcess(file.imageName)) continue;
-
-    const processKey = file.imageName.toLowerCase();
-
-    // Extract directory: everything before last backslash
-    const lastSlash = file.targetFilename.lastIndexOf('\\');
-    const directory = lastSlash > 0 ? file.targetFilename.substring(0, lastSlash) : file.targetFilename;
-    const fileKey = `file-${directory}`;
-
-    // Upsert process node (source of the file creation)
-    let procNode = nodeMap.get(processKey);
-    if (!procNode) {
-      procNode = makeNode(processKey, 'process', file.imageName);
-      nodeMap.set(processKey, procNode);
-    }
-    addUnique(procNode.users, file.user);
-    addUnique(procNode.fullPaths, file.image);
-
-    // Upsert file node
-    let fileNode = nodeMap.get(fileKey);
-    if (!fileNode) {
-      fileNode = makeNode(fileKey, 'file', directory);
-      nodeMap.set(fileKey, fileNode);
-    }
-    fileNode.count++;
-    fileNode.eventIds.push(event.id);
-    addUnique(fileNode.filePaths, file.targetFilename);
-
-    // Upsert created edge
-    const edgeId = `created-${processKey}-${fileKey}`;
-    let edge = edgeMap.get(edgeId);
-    if (!edge) {
-      edge = { id: edgeId, source: processKey, target: fileKey, type: 'created', count: 0, eventIds: [] };
-      edgeMap.set(edgeId, edge);
-    }
-    edge.count++;
-    edge.eventIds.push(event.id);
   }
 
   return {

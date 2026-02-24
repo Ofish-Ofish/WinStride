@@ -94,6 +94,21 @@ export const processTreeStyles: CyStylesheet[] = [
     },
   },
 
+  // Process nodes with correlated PowerShell scripts — purple ring
+  {
+    selector: 'node[type = "process"][hasScripts = "yes"]',
+    style: {
+      'border-width': 2.5,
+      'border-color': '#da8ee7',
+      'border-opacity': 0.9,
+      'shadow-blur': 14,
+      'shadow-color': '#da8ee7',
+      'shadow-opacity': 0.35,
+      'shadow-offset-x': 0,
+      'shadow-offset-y': 0,
+    },
+  },
+
   // Network nodes — diamond, green
   {
     selector: 'node[type = "network"]',

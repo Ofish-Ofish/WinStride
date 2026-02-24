@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import type { SelectedElement } from '../../../shared/graph';
 import { FAILURE_STATUS_LABELS } from '../shared/eventMeta';
 import { type DetectionMap, maxSeverity, SEVERITY_COLORS, SEVERITY_LABELS } from '../../../shared/detection/engine';
@@ -85,7 +86,7 @@ function DetectionsSummary({ detections }: { detections: Detection[] }) {
   );
 }
 
-function NodePanel({ data, detections }: { data: Record<string, unknown>; detections?: DetectionMap }) {
+const NodePanel = memo(function NodePanel({ data, detections }: { data: Record<string, unknown>; detections?: DetectionMap }) {
   const nodeType = data.type as string;
   const privileged = data.privileged as boolean;
   const colorKey = nodeType === 'machine' ? 'machine' : privileged ? 'privileged' : 'user';
@@ -159,7 +160,7 @@ function NodePanel({ data, detections }: { data: Record<string, unknown>; detect
       </div>
     </div>
   );
-}
+});
 
 function resolveEdgeDetections(eventIds: unknown, detections?: DetectionMap): Detection[] {
   if (!detections || !Array.isArray(eventIds)) return [];
@@ -173,7 +174,7 @@ function resolveEdgeDetections(eventIds: unknown, detections?: DetectionMap): De
   return result;
 }
 
-function EdgePanel({ data, detections }: { data: Record<string, unknown>; detections?: DetectionMap }) {
+const EdgePanel = memo(function EdgePanel({ data, detections }: { data: Record<string, unknown>; detections?: DetectionMap }) {
   const firstSeen = data.firstSeen as string;
   const lastSeen = data.lastSeen as string;
   const logonTypeLabel = data.logonTypeLabel as string;
@@ -199,6 +200,11 @@ function EdgePanel({ data, detections }: { data: Record<string, unknown>; detect
   const initiator = subjectDomainName && subjectDomainName !== '-'
     ? `${subjectDomainName}\\${subjectUserName}`
     : subjectUserName;
+
+  const edgeDetections = useMemo(
+    () => resolveEdgeDetections(data.eventIds, detections),
+    [data.eventIds, detections],
+  );
 
   return (
     <div className="absolute top-3 right-3 w-72 bg-[#0d1117]/95 border border-[#21262d] rounded-lg backdrop-blur-md shadow-2xl overflow-hidden max-h-[calc(100%-24px)] overflow-y-auto">
@@ -260,15 +266,15 @@ function EdgePanel({ data, detections }: { data: Record<string, unknown>; detect
         {lastSeen && <Row label="Last seen" value={formatTime(lastSeen)} />}
 
         {/* Detections (scoped to this edge's events) */}
-        <DetectionsSummary detections={resolveEdgeDetections(data.eventIds, detections)} />
+        <DetectionsSummary detections={edgeDetections} />
       </div>
     </div>
   );
-}
+});
 
-export default function NodeDetailPanel({ selected, detections }: { selected: SelectedElement; detections?: DetectionMap }) {
+export default memo(function NodeDetailPanel({ selected, detections }: { selected: SelectedElement; detections?: DetectionMap }) {
   const { type, data } = selected;
 
   if (type === 'node') return <NodePanel data={data} detections={detections} />;
   return <EdgePanel data={data} detections={detections} />;
-}
+});

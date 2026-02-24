@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState, useCallback, useEffect } from 'react';
+import { useRef, useMemo, useDeferredValue, useState, useCallback, useEffect } from 'react';
 import { transformEvents, isSystemAccount, LOGON_TYPE_LABELS } from './transformEvents';
 import { useCytoscape } from '../../../shared/graph';
 import { graphStyles } from './graphStyles';
@@ -13,6 +13,7 @@ import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
 import { useSeverityIntegration, edgeSeverity } from '../../../shared/detection/engine';
 import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
 import { ALL_EVENT_IDS } from '../shared/eventMeta';
+import { type MachineAliasMap, loadMachineAliases, saveMachineAliases, computeAutoAliases } from '../shared/machineAliases';
 
 /* ── Hub-spoke position calculator (pre-layout seed) ─────────────── */
 
@@ -132,14 +133,21 @@ function Legend() {
   );
 }
 
-export default function LogonGraph({ visible }: { visible: boolean }) {
+export default function LogonGraph({ visible = true }: { visible?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showFilters, setShowFilters] = useState(true);
   const [filters, setFilters] = useState<GraphFilters>(() => loadFiltersFromStorage() ?? DEFAULT_FILTERS);
   const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
+  const [machineAliases, setMachineAliases] = useState<MachineAliasMap>(loadMachineAliases);
 
   // Persist filters to localStorage on every change
   useEffect(() => { saveFiltersToStorage(filters); }, [filters]);
+
+  // Persist machine aliases to localStorage on every change
+  const updateAliases = useCallback((next: MachineAliasMap) => {
+    setMachineAliases(next);
+    saveMachineAliases(next);
+  }, []);
 
   const onResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -177,165 +185,130 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
     return filterBySeverity(events, filters.severityFilter);
   }, [events, filterBySeverity, filters.severityFilter]);
 
-  // Step 1: transform raw events into nodes & edges
+  // Auto-detect machine identity correlations (SID, machine account, local logon)
+  const autoAliasResult = useMemo(
+    () => filteredByRisk.length > 0 ? computeAutoAliases(filteredByRisk) : { aliases: {}, detected: [] },
+    [filteredByRisk],
+  );
+
+  // Merge: auto-detected aliases + user-defined overrides (user wins on conflict)
+  const mergedAliases = useMemo(
+    () => ({ ...autoAliasResult.aliases, ...machineAliases }),
+    [autoAliasResult.aliases, machineAliases],
+  );
+
+  // Step 1: transform raw events into nodes & edges (with alias resolution)
   const fullGraph = useMemo(() => {
     if (filteredByRisk.length === 0) return { nodes: [], edges: [] };
-    return transformEvents(filteredByRisk);
-  }, [filteredByRisk]);
+    return transformEvents(filteredByRisk, mergedAliases);
+  }, [filteredByRisk, mergedAliases]);
 
-  // Extract available machines and users for the filter panel
-  const availableMachines = useMemo(
-    () => fullGraph.nodes.filter((n) => n.type === 'machine').map((n) => n.label).sort(),
-    [fullGraph.nodes],
-  );
+  // Extract all available filter values in a single pass over nodes + edges
+  const { availableMachines, availableUsers, maxActivity, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses } = useMemo(() => {
+    const machines: string[] = [];
+    const users: string[] = [];
+    for (const n of fullGraph.nodes) {
+      if (n.type === 'machine') machines.push(n.label);
+      else if (n.type === 'user') users.push(n.label);
+    }
+    machines.sort();
+    users.sort();
 
-  const availableUsers = useMemo(
-    () => fullGraph.nodes.filter((n) => n.type === 'user').map((n) => n.label).sort(),
-    [fullGraph.nodes],
-  );
-
-  // Calculate max activity across all edges for the slider range
-  const maxActivity = useMemo(() => {
-    if (fullGraph.edges.length === 0) return 50;
-    return Math.max(...fullGraph.edges.map((e) => e.logonCount));
-  }, [fullGraph.edges]);
-
-  // Extract available values for new filter sections
-  const availableIps = useMemo(() => {
+    let maxAct = 0;
     const ips = new Set<string>();
-    for (const e of fullGraph.edges) if (e.ipAddress && e.ipAddress !== '-') ips.add(e.ipAddress);
-    return [...ips].sort();
-  }, [fullGraph.edges]);
-
-  const availableAuthPackages = useMemo(() => {
     const pkgs = new Set<string>();
-    for (const e of fullGraph.edges) if (e.authPackage) pkgs.add(e.authPackage);
-    return [...pkgs].sort();
-  }, [fullGraph.edges]);
-
-  const availableProcesses = useMemo(() => {
     const procs = new Set<string>();
-    for (const e of fullGraph.edges) if (e.processName && e.processName !== '-') procs.add(e.processName);
-    return [...procs].sort();
-  }, [fullGraph.edges]);
-
-  const availableFailureStatuses = useMemo(() => {
     const statuses = new Set<string>();
     for (const e of fullGraph.edges) {
+      if (e.logonCount > maxAct) maxAct = e.logonCount;
+      if (e.ipAddress && e.ipAddress !== '-') ips.add(e.ipAddress);
+      if (e.authPackage) pkgs.add(e.authPackage);
+      if (e.processName && e.processName !== '-') procs.add(e.processName);
       if (e.failureStatus && e.failureStatus !== '0x0') statuses.add(e.failureStatus);
       if (e.failureSubStatus && e.failureSubStatus !== '0x0') statuses.add(e.failureSubStatus);
     }
-    return [...statuses].sort();
-  }, [fullGraph.edges]);
 
-  // Step 2: apply client-side filters
+    return {
+      availableMachines: machines,
+      availableUsers: users,
+      maxActivity: maxAct || 50,
+      availableIps: [...ips].sort(),
+      availableAuthPackages: [...pkgs].sort(),
+      availableProcesses: [...procs].sort(),
+      availableFailureStatuses: [...statuses].sort(),
+    };
+  }, [fullGraph]);
+
+  // Step 2: apply client-side filters (single pass for nodes, single pass for edges)
+  const deferredFilters = useDeferredValue(filters);
   const { nodes, edges } = useMemo(() => {
-    let { nodes, edges } = fullGraph;
+    const { nodes: allNodes, edges: allEdges } = fullGraph;
 
-    // Apply machine tri-state filters (select = whitelist, exclude = blacklist)
-    if (filters.machineFilters.size > 0) {
-      const selected = new Set<string>();
-      const excluded = new Set<string>();
-      for (const [name, state] of filters.machineFilters) {
-        if (state === 'select') selected.add(name);
-        else if (state === 'exclude') excluded.add(name);
-      }
-      const prevNodeIds = new Set(nodes.filter((n) => n.type === 'machine').map((n) => n.id));
-      if (selected.size > 0) {
-        nodes = nodes.filter((n) => n.type !== 'machine' || selected.has(n.label));
-      } else if (excluded.size > 0) {
-        nodes = nodes.filter((n) => n.type !== 'machine' || !excluded.has(n.label));
-      }
-      const keptIds = new Set(nodes.filter((n) => n.type === 'machine').map((n) => n.id));
-      const removedIds = new Set([...prevNodeIds].filter((id) => !keptIds.has(id)));
-      if (removedIds.size > 0) {
-        edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
-      }
+    // Pre-compute tri-state filter sets
+    const machineSelected = new Set<string>();
+    const machineExcluded = new Set<string>();
+    for (const [name, state] of deferredFilters.machineFilters) {
+      if (state === 'select') machineSelected.add(name);
+      else if (state === 'exclude') machineExcluded.add(name);
     }
 
-    // Apply user tri-state filters (select = whitelist, exclude = blacklist)
-    if (filters.userFilters.size > 0) {
-      const selected = new Set<string>();
-      const excluded = new Set<string>();
-      for (const [name, state] of filters.userFilters) {
-        if (state === 'select') selected.add(name);
-        else if (state === 'exclude') excluded.add(name);
-      }
-      const prevNodeIds = new Set(nodes.filter((n) => n.type === 'user').map((n) => n.id));
-      if (selected.size > 0) {
-        nodes = nodes.filter((n) => n.type !== 'user' || selected.has(n.label));
-      } else if (excluded.size > 0) {
-        nodes = nodes.filter((n) => n.type !== 'user' || !excluded.has(n.label));
-      }
-      const keptIds = new Set(nodes.filter((n) => n.type === 'user').map((n) => n.id));
-      const removedIds = new Set([...prevNodeIds].filter((id) => !keptIds.has(id)));
-      if (removedIds.size > 0) {
-        edges = edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target));
-      }
+    const userSelected = new Set<string>();
+    const userExcluded = new Set<string>();
+    for (const [name, state] of deferredFilters.userFilters) {
+      if (state === 'select') userSelected.add(name);
+      else if (state === 'exclude') userExcluded.add(name);
     }
 
-    // Filter edges by logon type (tri-state: select = whitelist, exclude = blacklist, off = show all)
     const allLogonTypes = Object.keys(LOGON_TYPE_LABELS).map(Number);
-    const allowedLogonTypes = new Set(resolveTriState(allLogonTypes, filters.logonTypeFilters));
-    edges = edges.filter((e) => e.logonType < 0 || allowedLogonTypes.has(e.logonType));
+    const allowedLogonTypes = new Set(resolveTriState(allLogonTypes, deferredFilters.logonTypeFilters));
+    const allowedIps = deferredFilters.ipFilters.size > 0 ? new Set(resolveTriState(availableIps, deferredFilters.ipFilters)) : null;
+    const allowedPkgs = deferredFilters.authPackageFilters.size > 0 ? new Set(resolveTriState(availableAuthPackages, deferredFilters.authPackageFilters)) : null;
+    const allowedProcs = deferredFilters.processFilters.size > 0 ? new Set(resolveTriState(availableProcesses, deferredFilters.processFilters)) : null;
+    const allowedStatuses = deferredFilters.failureStatusFilters.size > 0 ? new Set(resolveTriState(availableFailureStatuses, deferredFilters.failureStatusFilters)) : null;
 
-    // Hide machine/system accounts
-    if (filters.hideMachineAccounts) {
-      const systemAccountIds = new Set(
-        nodes.filter((n) => n.type === 'user' && isSystemAccount(n.label)).map((n) => n.id),
-      );
-      nodes = nodes.filter((n) => !systemAccountIds.has(n.id));
-      edges = edges.filter((e) => !systemAccountIds.has(e.source) && !systemAccountIds.has(e.target));
+    // Single pass: filter nodes, collect removed IDs
+    const removedNodeIds = new Set<string>();
+    const filteredNodes: typeof allNodes = [];
+    for (const n of allNodes) {
+      if (n.type === 'machine') {
+        if (machineSelected.size > 0 && !machineSelected.has(n.label)) { removedNodeIds.add(n.id); continue; }
+        if (machineExcluded.size > 0 && machineExcluded.has(n.label)) { removedNodeIds.add(n.id); continue; }
+      } else if (n.type === 'user') {
+        if (userSelected.size > 0 && !userSelected.has(n.label)) { removedNodeIds.add(n.id); continue; }
+        if (userExcluded.size > 0 && userExcluded.has(n.label)) { removedNodeIds.add(n.id); continue; }
+        if (deferredFilters.hideMachineAccounts && isSystemAccount(n.label)) { removedNodeIds.add(n.id); continue; }
+      }
+      filteredNodes.push(n);
     }
 
-    // Filter by IP
-    if (filters.ipFilters.size > 0) {
-      const allowedIps = new Set(resolveTriState(availableIps, filters.ipFilters));
-      edges = edges.filter((e) => !e.ipAddress || e.ipAddress === '-' || allowedIps.has(e.ipAddress));
+    // Single pass: filter edges
+    const filteredEdges: typeof allEdges = [];
+    for (const e of allEdges) {
+      if (removedNodeIds.has(e.source) || removedNodeIds.has(e.target)) continue;
+      if (e.logonType >= 0 && !allowedLogonTypes.has(e.logonType)) continue;
+      if (allowedIps && e.ipAddress && e.ipAddress !== '-' && !allowedIps.has(e.ipAddress)) continue;
+      if (allowedPkgs && e.authPackage && !allowedPkgs.has(e.authPackage)) continue;
+      if (allowedProcs && e.processName && e.processName !== '-' && !allowedProcs.has(e.processName)) continue;
+      if (allowedStatuses) {
+        const hasFailure = (e.failureStatus && e.failureStatus !== '0x0') || (e.failureSubStatus && e.failureSubStatus !== '0x0');
+        if (hasFailure && !allowedStatuses.has(e.failureStatus) && !allowedStatuses.has(e.failureSubStatus)) continue;
+      }
+      if (deferredFilters.showElevatedOnly && !e.elevatedToken) continue;
+      if (e.logonCount < deferredFilters.activityMin) continue;
+      if (deferredFilters.activityMax !== Infinity && e.logonCount > deferredFilters.activityMax) continue;
+      filteredEdges.push(e);
     }
 
-    // Filter by auth package
-    if (filters.authPackageFilters.size > 0) {
-      const allowedPkgs = new Set(resolveTriState(availableAuthPackages, filters.authPackageFilters));
-      edges = edges.filter((e) => !e.authPackage || allowedPkgs.has(e.authPackage));
-    }
-
-    // Filter by process
-    if (filters.processFilters.size > 0) {
-      const allowedProcs = new Set(resolveTriState(availableProcesses, filters.processFilters));
-      edges = edges.filter((e) => !e.processName || e.processName === '-' || allowedProcs.has(e.processName));
-    }
-
-    // Filter by failure status
-    if (filters.failureStatusFilters.size > 0) {
-      const allowedStatuses = new Set(resolveTriState(availableFailureStatuses, filters.failureStatusFilters));
-      edges = edges.filter((e) => {
-        if ((!e.failureStatus || e.failureStatus === '0x0') && (!e.failureSubStatus || e.failureSubStatus === '0x0')) return true;
-        return allowedStatuses.has(e.failureStatus) || allowedStatuses.has(e.failureSubStatus);
-      });
-    }
-
-    // Elevated only
-    if (filters.showElevatedOnly) {
-      edges = edges.filter((e) => e.elevatedToken);
-    }
-
-    // Filter by activity range
-    edges = edges.filter((e) =>
-      e.logonCount >= filters.activityMin &&
-      (filters.activityMax === Infinity || e.logonCount <= filters.activityMax)
-    );
-
-    // Remove orphaned nodes (no remaining edges)
+    // Remove orphaned nodes
     const connectedIds = new Set<string>();
-    for (const e of edges) {
+    for (const e of filteredEdges) {
       connectedIds.add(e.source);
       connectedIds.add(e.target);
     }
-    nodes = nodes.filter((n) => connectedIds.has(n.id));
+    const nodes = filteredNodes.filter((n) => connectedIds.has(n.id));
 
-    return { nodes, edges };
-  }, [fullGraph, filters, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
+    return { nodes, edges: filteredEdges };
+  }, [fullGraph, deferredFilters, availableIps, availableAuthPackages, availableProcesses, availableFailureStatuses]);
 
   // Compute severity for each edge from its eventIds
   const edgesWithSeverity = useMemo(
@@ -437,6 +410,9 @@ export default function LogonGraph({ visible }: { visible: boolean }) {
                 availableProcesses={availableProcesses}
                 availableFailureStatuses={availableFailureStatuses}
                 maxActivity={maxActivity}
+                machineAliases={machineAliases}
+                onMachineAliasesChange={updateAliases}
+                autoDetected={autoAliasResult.detected}
               />
             </div>
           </>
