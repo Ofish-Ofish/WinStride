@@ -221,7 +221,6 @@ public class LogMonitor
 
                             if (latestId < _lastSeenRecordId)
                             {
-                                // Log was likely cleared
                                 _lastSeenRecordId = 0;
                                 _pendingWatchdogRecordId = null;
                             }
