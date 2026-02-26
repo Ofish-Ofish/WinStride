@@ -15,6 +15,7 @@ project.lock.json
 *.userosscache
 *.sln.docstates
 .env
+*.exe
 
 # Build results
 [Dd]ebug/
