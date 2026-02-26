@@ -73,6 +73,30 @@ class Agent
                 }
             });
 
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    Logger.WriteLine("[Autorun] Background loop starting...");
+                    AutorunService autorunService = new AutorunService(BaseUrl, client);
+
+                    while (true)
+                    {
+                        Guid pulseId = Guid.NewGuid();
+
+                        Logger.WriteLine($"[Autorun] Starting scan (Pulse: {pulseId})");
+                        await autorunService.SyncAutorunData(pulseId);
+
+                        await Task.Delay(TimeSpan.FromSeconds(120));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.WriteLine($"[FATAL] Autorun Loop crashed: {ex.Message}");
+                }
+            });
+
+
             List<Task> monitorTasks = new List<Task>();
 
             foreach (KeyValuePair<string, LogConfig> logEntry in fullConfig.Logs)
@@ -172,6 +196,7 @@ class Agent
 
                 string json = JsonConvert.SerializeObject(pulse, settings);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
+
 
                 HttpResponseMessage response = await client.PostAsync(heartbeatUrl, content);
 

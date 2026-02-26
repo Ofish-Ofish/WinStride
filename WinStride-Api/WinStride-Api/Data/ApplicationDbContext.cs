@@ -41,6 +41,11 @@ namespace WinStrideApi.Data
             {
                 entity.ToTable("WinAutoruns");
 
+                entity.Property(e => e.Md5).IsRequired(false);
+                entity.Property(e => e.Sha1).IsRequired(false);
+                entity.Property(e => e.Sha256).IsRequired(false);
+                entity.Property(e => e.ImagePath).IsRequired(false);
+
                 entity.HasIndex(e => e.BatchId);
 
                 entity.HasIndex(e => e.Entry);

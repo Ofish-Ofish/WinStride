@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
     <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.4.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.2" />
@@ -19,6 +20,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\WinStride-Api\WinStride-Api\WinStride-Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+	<None Update="Binaries\autorunsc.exe">
+	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	</None>
   </ItemGroup>
 
   <ItemGroup>
