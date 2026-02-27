@@ -243,6 +243,23 @@ export default function VirtualizedEventList({
   const [sortKey, setSortKey] = useState<string>('time');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [detailHeight, setDetailHeight] = useState(0);
+  const detailObserverRef = useRef<ResizeObserver | null>(null);
+  const detailMeasureRef = useCallback((node: HTMLDivElement | null) => {
+    if (detailObserverRef.current) {
+      detailObserverRef.current.disconnect();
+      detailObserverRef.current = null;
+    }
+    if (node) {
+      setDetailHeight(node.offsetHeight);
+      detailObserverRef.current = new ResizeObserver(() => {
+        setDetailHeight(node.offsetHeight);
+      });
+      detailObserverRef.current.observe(node);
+    } else {
+      setDetailHeight(0);
+    }
+  }, []);
   const defaultVisibleCols = useMemo(
     () => new Set(columns.filter((c) => c.defaultVisible).map((c) => c.key)),
     [columns],
@@ -347,7 +364,7 @@ export default function VirtualizedEventList({
     });
   }, []);
 
-  const totalHeight = sortedEvents.length * ROW_HEIGHT;
+  const totalHeight = sortedEvents.length * ROW_HEIGHT + detailHeight;
   // Before ResizeObserver fires, render a small safe batch instead of ALL rows.
   // Without this cap, the first frame creates every event as a real DOM node
   // (e.g. 1500 rows × 7 cols = 10,500 elements) and stalls the browser.
@@ -523,7 +540,7 @@ export default function VirtualizedEventList({
                                 </div>
                               ))}
                             </div>
-                            {isExpanded && <MemoDetailRow event={event} rendererRef={renderDetailRowRef} />}
+                            {isExpanded && <div ref={detailMeasureRef} className="py-px"><MemoDetailRow event={event} rendererRef={renderDetailRowRef} /></div>}
                           </div>
                         );
                       })}

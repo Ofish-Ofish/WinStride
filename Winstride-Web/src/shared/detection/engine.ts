@@ -96,6 +96,11 @@ export function runDetections(
   }
 
   const seenPerEvent = new Map<number, Set<string>>();
+  if (prev) {
+    for (const [eventId, dets] of prev.byEventId) {
+      seenPerEvent.set(eventId, new Set(dets.map(d => d.ruleId)));
+    }
+  }
   const addDetection = (eventId: number, det: Detection) => {
     let seen = seenPerEvent.get(eventId);
     if (!seen) { seen = new Set(); seenPerEvent.set(eventId, seen); }
@@ -207,6 +212,11 @@ function runDetectionsAsync(
   }
 
   const seenPerEvent = new Map<number, Set<string>>();
+  if (prev) {
+    for (const [eventId, dets] of prev.byEventId) {
+      seenPerEvent.set(eventId, new Set(dets.map(d => d.ruleId)));
+    }
+  }
   const addDet = (eventId: number, det: Detection) => {
     let seen = seenPerEvent.get(eventId);
     if (!seen) { seen = new Set(); seenPerEvent.set(eventId, seen); }
