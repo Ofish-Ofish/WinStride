@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using WinStrideApi.Data;
@@ -11,9 +12,11 @@ using WinStrideApi.Data;
 namespace WinStride_Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260224194156_AddWinAutorunsTable")]
+    partial class AddWinAutorunsTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -58,9 +61,11 @@ namespace WinStride_Api.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("ImagePath")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("Imp")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("LaunchString")
@@ -72,12 +77,15 @@ namespace WinStride_Api.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Md5")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("PeSha1")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("PeSha256")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("Profile")
@@ -85,9 +93,11 @@ namespace WinStride_Api.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Sha1")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("Sha256")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<DateTime>("Time")
@@ -95,9 +105,6 @@ namespace WinStride_Api.Migrations
 
                     b.Property<DateTimeOffset>("TimeSynced")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Verified")
-                        .HasColumnType("text");
 
                     b.Property<string>("Version")
                         .IsRequired()

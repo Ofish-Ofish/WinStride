@@ -17,7 +17,8 @@ modelBuilder.EnableLowerCamelCase();
 
 modelBuilder.EntitySet<WinEvent>("Event");
 modelBuilder.EntitySet<Heartbeat>("Heartbeat");
-modelBuilder.EntitySet<TCPView>("NetworkConnections");
+modelBuilder.EntitySet<TCPView>("NetworkConnections");  
+modelBuilder.EntitySet<AutorunView>("Autoruns");
 
 builder.Services.AddControllers().AddNewtonsoftJson().AddOData(options =>
     options.Select().Filter().OrderBy().Count().SetMaxTop(5000).AddRouteComponents(
