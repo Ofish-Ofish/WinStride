@@ -77,6 +77,21 @@ export function resolveMachineName(name: string, aliases: MachineAliasMap): stri
   return name;
 }
 
+/**
+ * Collect all raw names that resolve to the same canonical name as `name`.
+ * Returns the list of other names (excluding the canonical itself).
+ */
+export function getMachineAliasGroup(name: string, aliases: MachineAliasMap): string[] {
+  const canonical = resolveMachineName(name, aliases);
+  const others: string[] = [];
+  for (const [rawLower, target] of Object.entries(aliases)) {
+    if (target === canonical && rawLower !== canonical.toLowerCase()) {
+      others.push(rawLower);
+    }
+  }
+  return others;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Auto-detection: identity-based machine correlation                 */
 /* ------------------------------------------------------------------ */

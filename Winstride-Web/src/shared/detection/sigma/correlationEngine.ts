@@ -1,6 +1,6 @@
 import type { WinEvent } from '../../../modules/security/shared/types';
 import type { MultiEventRule, DetectionRule, Severity, Module } from '../rules';
-import { getField } from './fieldMatcher';
+import { getFieldResolved } from './fieldMatcher';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -90,10 +90,10 @@ function getGroupKey(
         const aliasMap = aliases.get(field);
         if (aliasMap) {
           const actualField = aliasMap.get(ruleId);
-          if (actualField) return getField(event, actualField).toLowerCase();
+          if (actualField) return getFieldResolved(event, actualField).toLowerCase();
         }
       }
-      return getField(event, field).toLowerCase();
+      return getFieldResolved(event, field).toLowerCase();
     })
     .join('|');
 }
@@ -226,7 +226,7 @@ export function buildValueCountRule(config: CorrelationConfig): MultiEventRule {
           // Count distinct values of the target field within window
           const distinctValues = new Set<string>();
           for (let k = windowStart; k <= i; k++) {
-            const val = getField(events[indices[k]], countField as string);
+            const val = getFieldResolved(events[indices[k]], countField as string);
             if (val) distinctValues.add(val.toLowerCase());
           }
           if (meetsCondition(distinctValues.size, config.condition)) {

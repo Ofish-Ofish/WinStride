@@ -5,6 +5,7 @@ import { parseEventData } from './listColumns';
 import { Row, SectionLabel, Badge, RawDataToggle } from '../../../components/list/DetailPrimitives';
 import type { Detection } from '../../../shared/detection/rules';
 import { SEVERITY_COLORS } from '../../../shared/detection/engine';
+import { type MachineAliasMap, resolveMachineName, getMachineAliasGroup } from '../shared/machineAliases';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -150,7 +151,7 @@ function formatTimestamp(iso: string): string {
   return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}  ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-export default memo(function EventDetailRow({ event, detections }: { event: WinEvent; detections?: Detection[] }) {
+export default memo(function EventDetailRow({ event, detections, machineAliases }: { event: WinEvent; detections?: Detection[]; machineAliases?: MachineAliasMap }) {
   const data = parseEventData(event);
 
   if (!data) {
@@ -197,6 +198,32 @@ export default memo(function EventDetailRow({ event, detections }: { event: WinE
         {/* Identity */}
         <div>
           <SectionLabel>Identity</SectionLabel>
+          {(() => {
+            const resolved = machineAliases ? resolveMachineName(event.machineName, machineAliases) : event.machineName;
+            const group = machineAliases ? getMachineAliasGroup(event.machineName, machineAliases) : [];
+            const eventNameLower = event.machineName.toLowerCase();
+            // All names in the group: the event's raw name + other aliases
+            const allNames = [eventNameLower, ...group.filter(n => n !== eventNameLower)];
+            // Only show aliases section if there are multiple names
+            const hasAliases = allNames.length > 1 || resolved !== event.machineName;
+            return (
+              <Row label="Machine" value={
+                hasAliases
+                  ? <span>
+                      <span className="font-semibold underline decoration-gray-500">{resolved}</span>
+                      {allNames.map((name) => {
+                        const isEventName = name === eventNameLower;
+                        return (
+                          <span key={name} className="ml-1.5">
+                            {isEventName ? name : <span>({name})</span>}
+                          </span>
+                        );
+                      })}
+                    </span>
+                  : event.machineName
+              } />
+            );
+          })()}
           <Row label="Target User" value={data.targetUserName} />
           <Row label="Domain" value={data.targetDomainName} />
           {initiator && initiator !== '-' && (

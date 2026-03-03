@@ -1,10 +1,33 @@
 import { getDataArray, getDataField, getSystemField } from '../../eventParsing';
 import type { WinEvent } from '../../../modules/security/shared/types';
+import { type MachineAliasMap, resolveMachineName } from '../../../modules/security/shared/machineAliases';
 
 /** System-level fields that live in Event.System, not EventData.Data */
 const SYSTEM_FIELDS = new Set([
   'Provider_Name', 'Provider_Guid', 'Channel', 'Computer',
 ]);
+
+/** Fields that contain machine names and should be alias-normalized */
+const MACHINE_FIELDS = new Set(['Computer', 'WorkstationName']);
+
+/** Module-level alias map — set before correlation runs, cleared after */
+let _activeMachineAliases: MachineAliasMap | null = null;
+
+export function setActiveMachineAliases(aliases: MachineAliasMap | null): void {
+  _activeMachineAliases = aliases;
+}
+
+/**
+ * Alias-aware field accessor. Wraps getField and applies resolveMachineName
+ * for machine-name fields when aliases are active.
+ */
+export function getFieldResolved(event: WinEvent, fieldName: string): string {
+  const raw = getField(event, fieldName);
+  if (_activeMachineAliases && raw && MACHINE_FIELDS.has(fieldName)) {
+    return resolveMachineName(raw, _activeMachineAliases);
+  }
+  return raw;
+}
 
 /**
  * Parse a Sigma field key like "CommandLine|contains|all" into

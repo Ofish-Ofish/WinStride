@@ -8,6 +8,8 @@ import {
   getRulesForModule,
   getMultiEventRulesForModule,
 } from './rules';
+import type { MachineAliasMap } from '../../modules/security/shared/machineAliases';
+import { setActiveMachineAliases } from './sigma/fieldMatcher';
 
 /* ------------------------------------------------------------------ */
 /*  Engine — run all rules against events                              */
@@ -83,6 +85,7 @@ export function runDetections(
   module: Module,
   startIdx = 0,
   prev: DetectionMap | null = null,
+  machineAliases?: MachineAliasMap,
 ): DetectionMap {
   const indexed = getIndexedRules(module);
   const multiRules = getMultiEventRulesForModule(module);
@@ -124,12 +127,14 @@ export function runDetections(
   }
 
   // Multi-event rules — need all events (O(n) sliding window, runs fast)
+  if (machineAliases) setActiveMachineAliases(machineAliases);
   for (const rule of multiRules) {
     const flaggedIds = rule.matchAll(events);
     if (flaggedIds.size === 0) continue;
     const det: Detection = { ruleId: rule.id, ruleName: rule.name, severity: rule.severity, mitre: rule.mitre, description: rule.description };
     for (const id of flaggedIds) addDetection(id, det);
   }
+  if (machineAliases) setActiveMachineAliases(null);
 
   // Count by severity
   const counts: Record<Severity, number> = { info: 0, low: 0, medium: 0, high: 0, critical: 0 };
@@ -200,6 +205,7 @@ function runDetectionsAsync(
   prev: DetectionMap | null,
   token: { cancelled: boolean },
   onComplete: (map: DetectionMap) => void,
+  machineAliases?: MachineAliasMap,
 ): void {
   const indexed = getIndexedRules(module);
   const multiRules = getMultiEventRulesForModule(module);
@@ -253,6 +259,7 @@ function runDetectionsAsync(
       if (token.cancelled) return;
       const deadline = performance.now() + CHUNK_BUDGET_MS;
 
+      if (machineAliases) setActiveMachineAliases(machineAliases);
       while (ruleIdx < multiRules.length) {
         const rule = multiRules[ruleIdx];
         const flaggedIds = rule.matchAll(events);
@@ -266,6 +273,7 @@ function runDetectionsAsync(
           return;
         }
       }
+      if (machineAliases) setActiveMachineAliases(null);
 
       onComplete(buildResult());
     }
@@ -311,9 +319,9 @@ const EMPTY_MAP: DetectionMap = {
   counts: { info: 0, low: 0, medium: 0, high: 0, critical: 0 },
 };
 
-export function useDetections(events: WinEvent[] | undefined, module: Module): DetectionMap {
+export function useDetections(events: WinEvent[] | undefined, module: Module, machineAliases?: MachineAliasMap): DetectionMap {
   const [result, setResult] = useState<DetectionMap>(EMPTY_MAP);
-  const cacheRef = useRef<{ module: Module; count: number; map: DetectionMap } | null>(null);
+  const cacheRef = useRef<{ module: Module; count: number; map: DetectionMap; aliasRef: MachineAliasMap | undefined } | null>(null);
   const cancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
   useEffect(() => {
@@ -332,19 +340,19 @@ export function useDetections(events: WinEvent[] | undefined, module: Module): D
     let startIdx = 0;
     let prev: DetectionMap | null = null;
 
-    // Incremental: same module, array grew (batch loading appends events)
-    if (cache && cache.module === module && events.length > cache.count) {
+    // Incremental: same module, array grew, aliases unchanged (batch loading appends events)
+    if (cache && cache.module === module && cache.aliasRef === machineAliases && events.length > cache.count) {
       startIdx = cache.count;
       prev = cache.map;
     }
 
     runDetectionsAsync(events, module, startIdx, prev, token, (map) => {
-      cacheRef.current = { module, count: events.length, map };
+      cacheRef.current = { module, count: events.length, map, aliasRef: machineAliases };
       setResult(map);
-    });
+    }, machineAliases);
 
     return () => { token.cancelled = true; };
-  }, [events, module]);
+  }, [events, module, machineAliases]);
 
   return result;
 }
@@ -363,8 +371,8 @@ export interface SeverityIntegration {
   getEventSeverity: (event: WinEvent) => { severity: Severity; detections: Detection[] } | null;
 }
 
-export function useSeverityIntegration(events: WinEvent[] | undefined, module: Module): SeverityIntegration {
-  const detections = useDetections(events, module);
+export function useSeverityIntegration(events: WinEvent[] | undefined, module: Module, machineAliases?: MachineAliasMap): SeverityIntegration {
+  const detections = useDetections(events, module, machineAliases);
 
   const getSortValue = useCallback(
     (columnKey: string, event: WinEvent) => {

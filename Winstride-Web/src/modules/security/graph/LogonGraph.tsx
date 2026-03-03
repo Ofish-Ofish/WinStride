@@ -13,7 +13,7 @@ import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
 import { useSeverityIntegration, edgeSeverity } from '../../../shared/detection/engine';
 import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
 import { ALL_EVENT_IDS } from '../shared/eventMeta';
-import { type MachineAliasMap, loadMachineAliases, saveMachineAliases, computeAutoAliases } from '../shared/machineAliases';
+import { useMachineAliases } from '../shared/useMachineAliases';
 
 /* ── Hub-spoke position calculator (pre-layout seed) ─────────────── */
 
@@ -138,16 +138,8 @@ export default function LogonGraph({ visible = true }: { visible?: boolean }) {
   const [showFilters, setShowFilters] = useState(true);
   const [filters, setFilters] = useState<GraphFilters>(() => loadFiltersFromStorage() ?? DEFAULT_FILTERS);
   const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
-  const [machineAliases, setMachineAliases] = useState<MachineAliasMap>(loadMachineAliases);
-
   // Persist filters to localStorage on every change
   useEffect(() => { saveFiltersToStorage(filters); }, [filters]);
-
-  // Persist machine aliases to localStorage on every change
-  const updateAliases = useCallback((next: MachineAliasMap) => {
-    setMachineAliases(next);
-    saveMachineAliases(next);
-  }, []);
 
   const onResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -177,25 +169,17 @@ export default function LogonGraph({ visible = true }: { visible?: boolean }) {
     timeEnd: filters.timeEnd,
   }, { enabled: visible });
 
-  const { detections: sevDetections, filterBySeverity } = useSeverityIntegration(events, 'security');
+  // Step 0a: compute aliases from raw events (most complete alias map for detection)
+  const { mergedAliases, autoResult: autoAliasResult, userAliases: machineAliases, setUserAliases: updateAliases } = useMachineAliases(events);
 
-  // Step 0: apply severity filter to raw events before graph aggregation
+  // Step 0b: run detection with alias-aware correlation
+  const { detections: sevDetections, filterBySeverity } = useSeverityIntegration(events, 'security', mergedAliases);
+
+  // Step 0c: apply severity filter to raw events before graph aggregation
   const filteredByRisk = useMemo(() => {
     if (!events) return [];
     return filterBySeverity(events, filters.severityFilter);
   }, [events, filterBySeverity, filters.severityFilter]);
-
-  // Auto-detect machine identity correlations (SID, machine account, local logon)
-  const autoAliasResult = useMemo(
-    () => filteredByRisk.length > 0 ? computeAutoAliases(filteredByRisk) : { aliases: {}, detected: [] },
-    [filteredByRisk],
-  );
-
-  // Merge: auto-detected aliases + user-defined overrides (user wins on conflict)
-  const mergedAliases = useMemo(
-    () => ({ ...autoAliasResult.aliases, ...machineAliases }),
-    [autoAliasResult.aliases, machineAliases],
-  );
 
   // Step 1: transform raw events into nodes & edges (with alias resolution)
   const fullGraph = useMemo(() => {

@@ -277,7 +277,7 @@ function NodeDetail({ node, detections }: { node: AggregatedNode; detections?: D
         </div>
       )}
 
-      {node.scriptBlocks.length > 0 && <ScriptBlocksSection scripts={node.scriptBlocks} />}
+      {node.scriptBlocks?.length > 0 && <ScriptBlocksSection scripts={node.scriptBlocks} />}
 
       {detections && detections.length > 0 && <DetectionsSummary detections={detections} />}
     </div>

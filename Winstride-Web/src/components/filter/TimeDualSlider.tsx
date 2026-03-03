@@ -82,6 +82,7 @@ export default function TimeDualSlider({
           max={MAX_IDX}
           step={1}
           value={startIdx}
+          style={startIdx === endIdx && startIdx >= MAX_IDX / 2 ? { zIndex: 5 } : undefined}
           onChange={(e) => {
             const idx = Math.min(Number(e.target.value), endIdx);
             setStartIdx(idx);
@@ -96,6 +97,7 @@ export default function TimeDualSlider({
           max={MAX_IDX}
           step={1}
           value={endIdx}
+          style={startIdx === endIdx && startIdx < MAX_IDX / 2 ? { zIndex: 5 } : undefined}
           onChange={(e) => {
             const idx = Math.max(Number(e.target.value), startIdx);
             setEndIdx(idx);
