@@ -9,7 +9,7 @@ logs:
   Security:
     enabled: true
     minLevel: Verbose
-    includeIds: [4624, 4625, 4648, 4662, 4672, 4720, 4726, 4732, 4733, 4738, 4768, 4769, 4776, 5379]
+    includeIds: [1102, 4624, 4625, 4648, 4662, 4698, 4672, 4720, 4726, 4732, 4733, 4738, 4768, 4769, 4776, 4688, 5379]
     excludeIds: []
     maxBacklogDays: 7
   Microsoft-Windows-PowerShell/Operational:
