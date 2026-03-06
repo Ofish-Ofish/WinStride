@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState, useCallback, useEffect, useTransition } from 'react';
+import { useRef, useMemo, useState, useEffect, useTransition } from 'react';
 import { type SysmonFilters } from '../shared/filterTypes';
 import type { FilterState } from '../../../components/filter/filterPrimitives';
 import { saveSysmonFilters } from '../shared/filterSerializer';
@@ -19,6 +19,7 @@ import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
 import { useSeverityIntegration, SEVERITY_COLORS, SEVERITY_LABELS, maxSeverity, edgeSeverity } from '../../../shared/detection/engine';
 import type { Detection } from '../../../shared/detection/rules';
 import { useCytoscape } from '../../../shared/graph';
+import SidePanel from '../../../components/layout/SidePanel';
 
 /* ------------------------------------------------------------------ */
 /*  Graph-specific defaults: process creation only                     */
@@ -294,30 +295,7 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
   const [hideSystem, setHideSystem] = useState(true);
   const [, startTransition] = useTransition();
   const [filters, setFilters] = useState<SysmonFilters>(() => GRAPH_DEFAULT_FILTERS);
-  const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
-
   useEffect(() => { saveSysmonFilters(filters); }, [filters]);
-
-  /* ---- Resize handle ---- */
-  const onResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = panelWidth;
-    const onMove = (ev: MouseEvent) => {
-      const delta = startX - ev.clientX;
-      setPanelWidth(Math.min(1000, Math.max(260, startW + delta)));
-    };
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }, [panelWidth]);
 
   /* ---- Data fetch: Sysmon events ---- */
   const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
@@ -620,26 +598,15 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
 
         {/* Resize handle + Filter sidebar */}
         {showFilters && (
-          <>
-            <div
-              onMouseDown={onResizeStart}
-              className="w-1.5 flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[#58a6ff]/10 transition-colors"
-            >
-              <div className="w-[3px] h-10 rounded-full bg-[#30363d] group-hover:bg-[#58a6ff]/60 transition-colors" />
-            </div>
-            <div
-              className="flex-shrink-0 overflow-y-auto gf-scrollbar self-stretch"
-              style={{ width: panelWidth, maxHeight: '100%' }}
-            >
-              <SysmonFilterPanel
-                filters={filters}
-                onFiltersChange={setFilters}
-                availableMachines={availableMachines}
-                availableProcesses={availableProcesses}
-                availableUsers={availableUsers}
-              />
-            </div>
-          </>
+          <SidePanel defaultWidth={Math.round(window.innerWidth / 2)}>
+            <SysmonFilterPanel
+              filters={filters}
+              onFiltersChange={setFilters}
+              availableMachines={availableMachines}
+              availableProcesses={availableProcesses}
+              availableUsers={availableUsers}
+            />
+          </SidePanel>
         )}
       </div>
     </div>

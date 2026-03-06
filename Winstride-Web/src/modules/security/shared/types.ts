@@ -4,6 +4,7 @@ export interface WinEvent {
   logName: string;
   machineName: string;
   level: string | null;
+  pid: number | null;
   timeCreated: string;
   eventData: string | null;
 }

@@ -1,4 +1,4 @@
-import { useRef, useMemo, useDeferredValue, useState, useCallback, useEffect } from 'react';
+import { useRef, useMemo, useDeferredValue, useState, useEffect } from 'react';
 import { transformEvents, isSystemAccount, LOGON_TYPE_LABELS } from './transformEvents';
 import { useCytoscape } from '../../../shared/graph';
 import { graphStyles } from './graphStyles';
@@ -14,6 +14,7 @@ import { useSeverityIntegration, edgeSeverity } from '../../../shared/detection/
 import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
 import { ALL_EVENT_IDS } from '../shared/eventMeta';
 import { useMachineAliases } from '../shared/useMachineAliases';
+import SidePanel from '../../../components/layout/SidePanel';
 
 /* ── Hub-spoke position calculator (pre-layout seed) ─────────────── */
 
@@ -137,29 +138,8 @@ export default function LogonGraph({ visible = true }: { visible?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showFilters, setShowFilters] = useState(true);
   const [filters, setFilters] = useState<GraphFilters>(() => loadFiltersFromStorage() ?? DEFAULT_FILTERS);
-  const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
   // Persist filters to localStorage on every change
   useEffect(() => { saveFiltersToStorage(filters); }, [filters]);
-
-  const onResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = panelWidth;
-    const onMove = (ev: MouseEvent) => {
-      const delta = startX - ev.clientX; // dragging left = wider panel
-      setPanelWidth(Math.min(1000, Math.max(260, startW + delta)));
-    };
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }, [panelWidth]);
 
   const { events, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
     logName: 'Security',
@@ -371,35 +351,24 @@ export default function LogonGraph({ visible = true }: { visible?: boolean }) {
         {selected && <NodeDetailPanel selected={selected} detections={sevDetections} />}
       </div>
 
-        {/* Resize handle + Filter sidebar (right) */}
+        {/* Filter sidebar (right) */}
         {showFilters && (
-          <>
-            <div
-              onMouseDown={onResizeStart}
-              className="w-1.5 flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[#58a6ff]/10 transition-colors"
-            >
-              <div className="w-[3px] h-10 rounded-full bg-[#30363d] group-hover:bg-[#58a6ff]/60 transition-colors" />
-            </div>
-            <div
-              className="flex-shrink-0 overflow-y-auto gf-scrollbar self-stretch"
-              style={{ width: panelWidth, maxHeight: '100%' }}
-            >
-              <GraphFilterPanel
-                filters={filters}
-                onFiltersChange={setFilters}
-                availableMachines={availableMachines}
-                availableUsers={availableUsers}
-                availableIps={availableIps}
-                availableAuthPackages={availableAuthPackages}
-                availableProcesses={availableProcesses}
-                availableFailureStatuses={availableFailureStatuses}
-                maxActivity={maxActivity}
-                machineAliases={machineAliases}
-                onMachineAliasesChange={updateAliases}
-                autoDetected={autoAliasResult.detected}
-              />
-            </div>
-          </>
+          <SidePanel defaultWidth={Math.round(window.innerWidth / 2)}>
+            <GraphFilterPanel
+              filters={filters}
+              onFiltersChange={setFilters}
+              availableMachines={availableMachines}
+              availableUsers={availableUsers}
+              availableIps={availableIps}
+              availableAuthPackages={availableAuthPackages}
+              availableProcesses={availableProcesses}
+              availableFailureStatuses={availableFailureStatuses}
+              maxActivity={maxActivity}
+              machineAliases={machineAliases}
+              onMachineAliasesChange={updateAliases}
+              autoDetected={autoAliasResult.detected}
+            />
+          </SidePanel>
         )}
       </div>
     </div>

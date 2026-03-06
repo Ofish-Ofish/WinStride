@@ -3,6 +3,7 @@ import type { SelectedElement } from '../../../shared/graph';
 import { FAILURE_STATUS_LABELS } from '../shared/eventMeta';
 import { type DetectionMap, maxSeverity, SEVERITY_COLORS, SEVERITY_LABELS } from '../../../shared/detection/engine';
 import type { Detection } from '../../../shared/detection/rules';
+import { Row, SectionLabel, Badge } from '../../../components/list/DetailPrimitives';
 
 const TYPE_COLORS: Record<string, string> = {
   user: '#58a6ff',
@@ -21,33 +22,6 @@ function formatTime(iso: string): string {
   return `${mo}/${day} ${h}:${min}\u00A0${ampm}`;
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex justify-between items-baseline py-1.5 border-b border-[#21262d]">
-      <span className="text-[11px] text-gray-500 uppercase tracking-wider shrink-0">{label}</span>
-      <span className="text-[12px] text-gray-300 font-mono text-right max-w-[60%] break-all">
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-[10px] text-gray-600 uppercase tracking-widest mt-2.5 mb-1">{children}</div>
-  );
-}
-
-function Badge({ children, color }: { children: React.ReactNode; color: string }) {
-  return (
-    <span
-      className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-      style={{ background: `${color}20`, color }}
-    >
-      {children}
-    </span>
-  );
-}
 
 function formatProcessName(path: string): string {
   const parts = path.replace(/\\/g, '/').split('/');
@@ -137,7 +111,7 @@ const NodePanel = memo(function NodePanel({ data, detections }: { data: Record<s
         {isUser && lastIp && lastIp !== '-' && (
           <>
             <SectionLabel>Network</SectionLabel>
-            <Row label="Last IP" value={lastIp} />
+            <Row label="Last IP" value={lastIp} mono />
           </>
         )}
 
@@ -238,7 +212,7 @@ const EdgePanel = memo(function EdgePanel({ data, detections }: { data: Record<s
           <>
             <SectionLabel>Network</SectionLabel>
             {ipAddress && ipAddress !== '-' && (
-              <Row label="IP Address" value={ipPort ? `${ipAddress}:${ipPort}` : ipAddress} />
+              <Row label="IP Address" value={ipPort ? `${ipAddress}:${ipPort}` : ipAddress} mono />
             )}
             {workstationName && workstationName !== '-' && (
               <Row label="Source host" value={workstationName} />
@@ -253,7 +227,7 @@ const EdgePanel = memo(function EdgePanel({ data, detections }: { data: Record<s
             {authPackage && <Row label="Auth" value={authPackage} />}
             {logonProcess && <Row label="Logon process" value={logonProcess} />}
             {processName && processName !== '-' && (
-              <Row label="Process" value={formatProcessName(processName)} />
+              <Row label="Process" value={formatProcessName(processName)} mono />
             )}
             {keyLength >= 0 && <Row label="Key length" value={`${keyLength}-bit`} />}
           </>

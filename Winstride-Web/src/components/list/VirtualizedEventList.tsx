@@ -10,6 +10,7 @@ import {
   saveVisibleColumns,
 } from '../../shared/listUtils';
 import { exportCSV, exportJSON } from '../../shared/eventExport';
+import SidePanel from '../layout/SidePanel';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -297,28 +298,6 @@ export default function VirtualizedEventList<T extends ListItem>({
 
   const hasDetailRow = !!renderDetailRow;
 
-  /* ---- Resize handle for filter sidebar ---- */
-  const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
-  const onResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = panelWidth;
-    const onMove = (ev: MouseEvent) => {
-      const delta = startX - ev.clientX;
-      setPanelWidth(Math.min(1000, Math.max(260, startW + delta)));
-    };
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }, [panelWidth]);
-
   /* ---- Sort ---- */
   // Stabilize getSortValue so detection updates don't trigger re-sort
   // when we're not sorting by severity
@@ -595,22 +574,11 @@ export default function VirtualizedEventList<T extends ListItem>({
           </div>
         </div>
 
-        {/* Resize handle + Filter sidebar */}
+        {/* Filter sidebar */}
         {showFilters && renderFilterPanel && (
-          <>
-            <div
-              onMouseDown={onResizeStart}
-              className="w-1.5 flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[#58a6ff]/10 transition-colors"
-            >
-              <div className="w-[3px] h-10 rounded-full bg-[#30363d] group-hover:bg-[#58a6ff]/60 transition-colors" />
-            </div>
-            <div
-              className="flex-shrink-0 overflow-y-auto gf-scrollbar self-stretch"
-              style={{ width: panelWidth, maxHeight: '100%' }}
-            >
-              {renderFilterPanel()}
-            </div>
-          </>
+          <SidePanel defaultWidth={Math.round(window.innerWidth / 2)}>
+            {renderFilterPanel()}
+          </SidePanel>
         )}
       </div>
     </div>

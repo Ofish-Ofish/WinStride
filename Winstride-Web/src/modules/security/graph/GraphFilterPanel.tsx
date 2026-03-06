@@ -207,7 +207,7 @@ export default function GraphFilterPanel({
   );
 
   return (
-    <div className="bg-[#0d1117] border border-[#21262d] rounded-xl p-4 space-y-3">
+    <div className="p-4 space-y-3">
       <TriStateLegend />
 
       {/* Presets */}
