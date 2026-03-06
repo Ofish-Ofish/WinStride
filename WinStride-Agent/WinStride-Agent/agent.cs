@@ -26,6 +26,8 @@ class Agent
             e.SetObserved();
         };
 
+
+
         try
         {
             string projectRoot = GetSourceDirectory();
@@ -96,6 +98,29 @@ class Agent
                 }
             });
 
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    Logger.WriteLine("[WinProcesses] Background loop starting...");
+                    WinProcessService processService = new WinProcessService(BaseUrl, client);
+
+                    while (true)
+                    {
+                        Guid pulseId = Guid.NewGuid();
+
+                        Logger.WriteLine($"[WinProcesses] Starting process sync (Pulse: {pulseId})");
+                        await processService.SyncProcessData(pulseId);
+
+                        await Task.Delay(TimeSpan.FromSeconds(10));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.WriteLine($"[FATAL] WinProcesses Loop crashed: {ex.Message}");
+                }
+            });
 
             List<Task> monitorTasks = new List<Task>();
 
