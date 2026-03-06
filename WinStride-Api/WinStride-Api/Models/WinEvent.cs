@@ -17,6 +17,8 @@ namespace WinStrideApi.Models
 
         public string? Level { get; set; } = string.Empty;
 
+        public int? Pid { get; set; }
+
         [Required]
         public DateTimeOffset TimeCreated { get; set; }
 

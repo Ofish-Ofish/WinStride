@@ -405,6 +405,7 @@ public class LogMonitor
             LogName = record.LogName,
             MachineName = record.MachineName,
             Level = record.LevelDisplayName ?? $"Level {record.Level}",
+            Pid = record.ProcessId,
             TimeCreated = record.TimeCreated.HasValue
                 ? new DateTimeOffset(record.TimeCreated.Value.ToUniversalTime())
                 : DateTimeOffset.UtcNow,
