@@ -23,7 +23,7 @@ export async function fetchEventsPaged(params?: Record<string, string>): Promise
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
-    const res = await fetch(`${API_BASE}/Event${buildQuery(params)}`, { signal: controller.signal });
+    const res = await fetch(`${API_BASE}/Event${buildQuery(params)}`, { signal: controller.signal, cache: 'no-store' });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     const json = await res.json();
     return {
@@ -54,7 +54,7 @@ async function fetchOData<T>(url: string, params?: Record<string, string>): Prom
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
-    const res = await fetch(`${url}${buildQuery(params)}`, { signal: controller.signal });
+    const res = await fetch(`${url}${buildQuery(params)}`, { signal: controller.signal, cache: 'no-store' });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     const json = await res.json();
     return {

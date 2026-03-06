@@ -101,7 +101,7 @@ export default function PSEventList({ visible }: { visible: boolean }) {
   }, [search]);
 
   /* ---- Data fetch ---- */
-  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount, refetch, failureCount } = useModuleEvents({
+  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount, refetch, isFetching, failureCount } = useModuleEvents({
     logName: 'Microsoft-Windows-PowerShell/Operational',
     allEventIds: PS_EVENT_IDS,
     eventFilters: filters.eventFilters,
@@ -171,7 +171,8 @@ export default function PSEventList({ visible }: { visible: boolean }) {
       loadedCount={loadedCount}
       totalCount={totalCount}
       isComplete={isComplete}
-      onRefresh={refetch}
+      onRefresh={() => refetch()}
+      isRefreshing={isFetching}
       failureCount={failureCount}
       columns={COLUMNS}
       columnsStorageKey="winstride:psColumns"

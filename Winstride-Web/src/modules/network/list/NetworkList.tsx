@@ -140,12 +140,13 @@ export default function NetworkList({ visible }: { visible: boolean }) {
   }, [search]);
 
   /* ---- Data fetch ---- */
-  const { data, isLoading, error, refetch, failureCount } = useQuery({
+  const { data, isLoading, error, refetch, isFetching, failureCount } = useQuery({
     queryKey: ['network-connections'],
     queryFn: () => fetchNetworkConnections(),
     enabled: visible,
     refetchInterval: 30_000,
     retry: 2,
+    structuralSharing: false,
   });
 
   const items = data?.items ?? [];
@@ -226,7 +227,8 @@ export default function NetworkList({ visible }: { visible: boolean }) {
       visible={visible}
       isLoading={isLoading}
       error={!!error}
-      onRefresh={refetch}
+      onRefresh={() => refetch()}
+      isRefreshing={isFetching}
       failureCount={failureCount}
       columns={COLUMNS}
       columnsStorageKey="winstride:networkColumns"

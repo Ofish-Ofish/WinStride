@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef, memo } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, useReducer, memo } from 'react';
 import {
   type ListItem,
   type ColumnDef,
@@ -181,6 +181,8 @@ export interface VirtualizedEventListProps<T extends ListItem> {
 
   /** Manual refresh callback — when provided, shows a refresh button */
   onRefresh?: () => void;
+  /** True while a refetch is in flight (spins the refresh icon) */
+  isRefreshing?: boolean;
   /** Number of consecutive failed fetch attempts */
   failureCount?: number;
 }
@@ -239,8 +241,16 @@ export default function VirtualizedEventList<T extends ListItem>({
   totalCount,
   isComplete,
   onRefresh,
+  isRefreshing = false,
   failureCount = 0,
 }: VirtualizedEventListProps<T>) {
+  /* ---- Refresh counter — forces re-render so relativeTime() recomputes ---- */
+  const [, forceRender] = useReducer((c: number) => c + 1, 0);
+  const handleRefresh = useCallback(() => {
+    onRefresh?.();
+    forceRender();
+  }, [onRefresh]);
+
   /* ---- List state ---- */
   const [sortKey, setSortKey] = useState<string>(defaultSortKey);
   const [sortDir, setSortDir] = useState<SortDir>(defaultSortDir);
@@ -442,9 +452,9 @@ export default function VirtualizedEventList<T extends ListItem>({
         </div>
         <div className="flex items-center gap-1.5">
           {onRefresh && (
-            <ToolbarButton onClick={onRefresh}>
+            <ToolbarButton onClick={handleRefresh}>
               <span className="flex items-center gap-1">
-                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M1.5 8a6.5 6.5 0 0 1 11.25-4.5M14.5 8a6.5 6.5 0 0 1-11.25 4.5" />
                   <path d="M13.5 1v3.5H10M2.5 15v-3.5H6" />
                 </svg>
@@ -501,7 +511,7 @@ export default function VirtualizedEventList<T extends ListItem>({
                 </div>
                 {onRefresh && (
                   <button
-                    onClick={onRefresh}
+                    onClick={handleRefresh}
                     className="px-4 py-1.5 text-[12px] rounded-md border border-[#f0a050]/40 text-[#f0a050] hover:bg-[#f0a050]/10 transition-colors"
                   >
                     Retry now
