@@ -4,6 +4,9 @@ import Layout from './components/layout/Layout';
 import SecurityDashboard from './modules/security/SecurityDashboard';
 import PowerShellDashboard from './modules/powershell/PowerShellDashboard';
 import SysmonDashboard from './modules/sysmon/SysmonDashboard';
+import AutorunsDashboard from './modules/autoruns/AutorunsDashboard';
+import HeartbeatsDashboard from './modules/heartbeats/HeartbeatsDashboard';
+import NetworkDashboard from './modules/network/NetworkDashboard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,6 +28,9 @@ function App() {
             <Route path="/security" element={<SecurityDashboard />} />
             <Route path="/powershell" element={<PowerShellDashboard />} />
             <Route path="/sysmon" element={<SysmonDashboard />} />
+            <Route path="/autoruns" element={<AutorunsDashboard />} />
+            <Route path="/heartbeats" element={<HeartbeatsDashboard />} />
+            <Route path="/network" element={<NetworkDashboard />} />
           </Route>
         </Routes>
       </BrowserRouter>

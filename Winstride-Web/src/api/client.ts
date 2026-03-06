@@ -1,4 +1,7 @@
 import type { WinEvent } from '../modules/security/shared/types';
+import type { AutorunEntry } from '../modules/autoruns/shared/types';
+import type { Heartbeat } from '../modules/heartbeats/shared/types';
+import type { NetworkConnection } from '../modules/network/shared/types';
 
 const API_BASE = '/api';
 
@@ -41,4 +44,41 @@ export async function fetchHealthCheck() {
   const res = await fetch(`${API_BASE}/Event/health`);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
+}
+
+/* ------------------------------------------------------------------ */
+/*  OData generic fetch (for non-event entities)                       */
+/* ------------------------------------------------------------------ */
+
+async function fetchOData<T>(url: string, params?: Record<string, string>): Promise<{ items: T[]; totalCount: number | null }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(`${url}${buildQuery(params)}`, { signal: controller.signal });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    const json = await res.json();
+    return {
+      items: json.value ?? json,
+      totalCount: json['@odata.count'] ?? null,
+    };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Request timed out — is the backend running?');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function fetchAutoruns(params?: Record<string, string>) {
+  return fetchOData<AutorunEntry>('/odata/WinAutoruns', { $count: 'true', $orderby: 'timeSynced desc', ...params });
+}
+
+export function fetchHeartbeats(params?: Record<string, string>) {
+  return fetchOData<Heartbeat>('/api/Heartbeat', { $count: 'true', $orderby: 'lastSeen desc', ...params });
+}
+
+export function fetchNetworkConnections(params?: Record<string, string>) {
+  return fetchOData<NetworkConnection>('/odata/NetworkConnections', { $count: 'true', $orderby: 'timeCreated desc', ...params });
 }

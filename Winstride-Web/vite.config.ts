@@ -12,6 +12,10 @@ export default defineConfig({
         target: 'http://localhost:5090',
         changeOrigin: true,
       },
+      '/odata': {
+        target: 'http://localhost:5090',
+        changeOrigin: true,
+      },
     },
   },
 })

@@ -8,6 +8,9 @@ const logTypes = [
   { name: 'Security', path: '/security' },
   { name: 'PowerShell', path: '/powershell' },
   { name: 'Sysmon', path: '/sysmon' },
+  { name: 'Autoruns', path: '/autoruns' },
+  { name: 'Heartbeats', path: '/heartbeats' },
+  { name: 'Network', path: '/network' },
 ];
 
 export default function Sidebar({ open }: SidebarProps) {
@@ -18,7 +21,7 @@ export default function Sidebar({ open }: SidebarProps) {
       }`}
     >
       <nav className="p-4 flex flex-col gap-1">
-        <span className="text-xs text-gray-500 uppercase tracking-wider mb-2">Log Types</span>
+        <span className="text-xs text-gray-500 uppercase tracking-wider mb-2">Modules</span>
         {logTypes.map((log) => (
           <NavLink
             key={log.path}

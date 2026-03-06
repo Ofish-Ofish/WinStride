@@ -9,6 +9,9 @@ const MODULE_VIEWS: Record<string, ViewMode[]> = {
   security:   ['dashboard', 'list', 'graph', 'timeline'],
   powershell: ['list'],
   sysmon:     ['list', 'graph'],
+  autoruns:   ['list'],
+  heartbeats: ['list'],
+  network:    ['list'],
 };
 
 export default function Layout() {
