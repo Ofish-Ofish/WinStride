@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using WinStride_Api.Models;
 using WinStrideApi.Models;
 
 namespace WinStrideApi.Data
@@ -13,6 +15,7 @@ namespace WinStrideApi.Data
         public DbSet<Heartbeat> Heartbeats { get; set; }
         public DbSet<TCPView> NetworkConnections { get; set; }
         public DbSet<AutorunView> AutorunViews { get; set; }
+        public DbSet<WinProcess> WinProcesses { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -53,6 +56,21 @@ namespace WinStrideApi.Data
                 entity.HasIndex(e => new { e.MachineName, e.TimeSynced })
                       .IsDescending(false, true);
             });
+
+            modelBuilder.Entity<WinProcess>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.MachineName).IsRequired();
+                entity.Property(e => e.BatchId).IsRequired();
+
+                entity.Property(e => e.WorkingSetSize).HasColumnType("bigint");
+
+                entity.HasIndex(e => new { e.MachineName, e.BatchId });
+
+                entity.HasIndex(e => e.Pid);
+            });
         }
     }
 }
+
