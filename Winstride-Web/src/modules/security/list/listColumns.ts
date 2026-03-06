@@ -84,7 +84,7 @@ export function parseEventData(event: WinEvent): ParsedEventData | null {
 /*  Column definitions                                                 */
 /* ------------------------------------------------------------------ */
 
-export const COLUMNS: ColumnDef[] = [
+export const COLUMNS: ColumnDef<WinEvent>[] = [
   {
     key: 'severity',
     label: 'Risk',

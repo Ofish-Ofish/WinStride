@@ -1,12 +1,11 @@
-import { useState, useMemo, useEffect, useCallback, useRef, useDeferredValue, memo } from 'react';
-import type { WinEvent } from '../../modules/security/shared/types';
+import { useState, useMemo, useEffect, useCallback, useRef, memo } from 'react';
 import {
+  type ListItem,
   type ColumnDef,
   type SortDir,
   sortEvents,
   nextSortDir,
   buildGridTemplate,
-  relativeTime,
   loadVisibleColumns,
   saveVisibleColumns,
 } from '../../shared/listUtils';
@@ -55,7 +54,7 @@ function ColumnPicker({
   visible,
   onToggle,
 }: {
-  columns: ColumnDef[];
+  columns: ColumnDef<any>[];
   visible: Set<string>;
   onToggle: (key: string) => void;
 }) {
@@ -115,7 +114,7 @@ function SortIcon({ dir }: { dir: SortDir }) {
 /*  Props                                                              */
 /* ------------------------------------------------------------------ */
 
-export interface VirtualizedEventListProps {
+export interface VirtualizedEventListProps<T extends ListItem> {
   visible: boolean;
 
   /** Data loading state */
@@ -124,7 +123,7 @@ export interface VirtualizedEventListProps {
   error: boolean;
 
   /** Column definitions for this module */
-  columns: ColumnDef[];
+  columns: ColumnDef<T>[];
   /** localStorage key for column visibility */
   columnsStorageKey: string;
 
@@ -133,28 +132,29 @@ export interface VirtualizedEventListProps {
   /** Empty state message when no events and no search */
   emptyMessage: string;
 
-  /** Event labels for CSV export (maps eventId -> label) */
-  eventLabels: Record<number, string>;
-  /** Column key that holds the event ID (for CSV label enrichment) */
-  eventIdColumnKey: string;
+  /** Optional CSV cell enrichment callback (replaces old eventLabels/eventIdColumnKey) */
+  csvEnrichment?: (col: ColumnDef<T>, item: T) => string | undefined;
   /** Prefix for exported file names */
   exportPrefix: string;
 
   /** Custom cell renderer — return null to use default rendering */
-  renderCell?: (col: ColumnDef, event: WinEvent) => React.ReactNode | null;
-  /** Detail row component shown when a row is expanded */
-  renderDetailRow: (event: WinEvent) => React.ReactNode;
+  renderCell?: (col: ColumnDef<T>, item: T) => React.ReactNode | null;
+  /** Detail row component shown when a row is expanded. Return null to disable expand. */
+  renderDetailRow?: (item: T) => React.ReactNode;
 
-  /** Filter sidebar component */
-  renderFilterPanel: () => React.ReactNode;
+  /** Filter sidebar component. When not provided, the Filters button is hidden. */
+  renderFilterPanel?: () => React.ReactNode;
 
   /** Show/hide filter sidebar state */
-  showFilters: boolean;
-  onToggleFilters: () => void;
+  showFilters?: boolean;
+  onToggleFilters?: () => void;
 
-  /** Sorted+filtered events (after client-side filtering) */
-  filteredEvents: WinEvent[];
-  /** Total raw events count (for "X / Y" display) */
+  /** Content to render above the list (e.g. summary cards) */
+  headerContent?: React.ReactNode;
+
+  /** Sorted+filtered items (after client-side filtering) */
+  filteredEvents: T[];
+  /** Total raw item count (for "X / Y" display) */
   rawCount: number;
 
   /** Client-side search filter (applied by parent) */
@@ -162,58 +162,56 @@ export interface VirtualizedEventListProps {
   onSearchChange: (value: string) => void;
 
   /** JSON export mapper function */
-  jsonMapper: (event: WinEvent) => Record<string, unknown>;
+  jsonMapper: (item: T) => Record<string, unknown>;
 
   /** Optional override for sort values — return undefined to fall back to col.getValue */
-  getSortValue?: (columnKey: string, event: WinEvent) => string | number | undefined;
+  getSortValue?: (columnKey: string, item: T) => string | number | undefined;
 
-  /** Number of events loaded so far (for progress bar) */
+  /** Default sort column key (defaults to 'time') */
+  defaultSortKey?: string;
+  /** Default sort direction (defaults to 'desc') */
+  defaultSortDir?: SortDir;
+
+  /** Number of items loaded so far (for progress bar) */
   loadedCount?: number;
-  /** Total event count from server (for progress bar) */
+  /** Total item count from server (for progress bar) */
   totalCount?: number | null;
   /** Whether all pages have finished loading */
   isComplete?: boolean;
+
+  /** Manual refresh callback — when provided, shows a refresh button */
+  onRefresh?: () => void;
+  /** Number of consecutive failed fetch attempts */
+  failureCount?: number;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Default cell renderer                                              */
 /* ------------------------------------------------------------------ */
 
-function DefaultCell({ col, event }: { col: ColumnDef; event: WinEvent }) {
-  if (col.key === 'time') {
-    return (
-      <span title={new Date(event.timeCreated).toISOString()}>
-        {relativeTime(event.timeCreated)}
-      </span>
-    );
-  }
-  return <span className="truncate text-white">{String(col.getValue(event) || '-')}</span>;
+function DefaultCell<T extends ListItem>({ col, item }: { col: ColumnDef<T>; item: T }) {
+  return <span className="truncate text-white">{String(col.getValue(item) || '-')}</span>;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Memoized detail row — prevents re-render on parent cascades        */
 /* ------------------------------------------------------------------ */
 
-/**
- * Wraps the detail row in React.memo keyed on event object reference.
- * renderDetailRow is read from a ref so changing the function reference
- * (which happens every parent render) does NOT trigger a re-render.
- */
 const MemoDetailRow = memo(function MemoDetailRow({
-  event,
+  item,
   rendererRef,
 }: {
-  event: WinEvent;
-  rendererRef: React.RefObject<(event: WinEvent) => React.ReactNode>;
+  item: any;
+  rendererRef: React.RefObject<(item: any) => React.ReactNode>;
 }) {
-  return <>{rendererRef.current!(event)}</>;
+  return <>{rendererRef.current!(item)}</>;
 });
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export default function VirtualizedEventList({
+export default function VirtualizedEventList<T extends ListItem>({
   visible,
   isLoading,
   error,
@@ -221,27 +219,31 @@ export default function VirtualizedEventList({
   columnsStorageKey,
   searchPlaceholder,
   emptyMessage,
-  eventLabels,
-  eventIdColumnKey,
+  csvEnrichment,
   exportPrefix,
   renderCell,
   renderDetailRow,
   renderFilterPanel,
-  showFilters,
+  showFilters = false,
   onToggleFilters,
+  headerContent,
   filteredEvents,
   rawCount,
   search,
   onSearchChange,
   jsonMapper,
   getSortValue,
+  defaultSortKey = 'time',
+  defaultSortDir = 'desc',
   loadedCount,
   totalCount,
   isComplete,
-}: VirtualizedEventListProps) {
+  onRefresh,
+  failureCount = 0,
+}: VirtualizedEventListProps<T>) {
   /* ---- List state ---- */
-  const [sortKey, setSortKey] = useState<string>('time');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [sortKey, setSortKey] = useState<string>(defaultSortKey);
+  const [sortDir, setSortDir] = useState<SortDir>(defaultSortDir);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detailHeight, setDetailHeight] = useState(0);
   const detailObserverRef = useRef<ResizeObserver | null>(null);
@@ -282,6 +284,8 @@ export default function VirtualizedEventList({
   /* ---- Stable ref for detail row renderer (avoids re-render on parent cascade) ---- */
   const renderDetailRowRef = useRef(renderDetailRow);
   renderDetailRowRef.current = renderDetailRow;
+
+  const hasDetailRow = !!renderDetailRow;
 
   /* ---- Resize handle for filter sidebar ---- */
   const [panelWidth, setPanelWidth] = useState(() => Math.round(window.innerWidth / 2));
@@ -364,13 +368,7 @@ export default function VirtualizedEventList({
     });
   }, []);
 
-  const totalHeight = sortedEvents.length * ROW_HEIGHT + detailHeight;
-  // Before ResizeObserver fires, render a small safe batch instead of ALL rows.
-  // Without this cap, the first frame creates every event as a real DOM node
-  // (e.g. 1500 rows × 7 cols = 10,500 elements) and stalls the browser.
-  // Always derive startIdx from scrollTop so the window follows scrolling even
-  // before ResizeObserver has measured the container. Use a safe batch size as
-  // fallback to avoid rendering ALL rows on the first frame.
+  const totalHeight = sortedEvents.length * ROW_HEIGHT + (hasDetailRow ? detailHeight : 0);
   const INITIAL_BATCH = 30;
   const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
   const endIdx = containerHeight > 0
@@ -393,8 +391,13 @@ export default function VirtualizedEventList({
   /* ---- Render ---- */
   if (!visible) return null;
 
+  const hasFilters = !!renderFilterPanel;
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      {/* Header content (e.g. summary cards) */}
+      {headerContent}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between flex-shrink-0 mb-2 gap-2 flex-wrap">
         <div className="flex items-center gap-3">
@@ -438,16 +441,29 @@ export default function VirtualizedEventList({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          {onRefresh && (
+            <ToolbarButton onClick={onRefresh}>
+              <span className="flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1.5 8a6.5 6.5 0 0 1 11.25-4.5M14.5 8a6.5 6.5 0 0 1-11.25 4.5" />
+                  <path d="M13.5 1v3.5H10M2.5 15v-3.5H6" />
+                </svg>
+                Refresh
+              </span>
+            </ToolbarButton>
+          )}
           <ColumnPicker columns={columns} visible={visibleColumns} onToggle={toggleColumn} />
-          <ToolbarButton onClick={() => exportCSV(sortedEvents, columns, visibleColumns, eventLabels, eventIdColumnKey, exportPrefix)}>
+          <ToolbarButton onClick={() => exportCSV(sortedEvents, columns, visibleColumns, exportPrefix, csvEnrichment)}>
             Export CSV
           </ToolbarButton>
           <ToolbarButton onClick={() => exportJSON(sortedEvents, jsonMapper, exportPrefix)}>
             Export JSON
           </ToolbarButton>
-          <ToolbarButton onClick={onToggleFilters} active={showFilters}>
-            Filters
-          </ToolbarButton>
+          {hasFilters && onToggleFilters && (
+            <ToolbarButton onClick={onToggleFilters} active={showFilters}>
+              Filters
+            </ToolbarButton>
+          )}
           {scrollTop > 200 && (
             <ToolbarButton onClick={scrollToTop}>
               Top
@@ -474,8 +490,23 @@ export default function VirtualizedEventList({
                 </div>
               </div>
             ) : error ? (
-              <div className="flex items-center justify-center min-h-[200px] text-red-400/80 text-sm">
-                Error loading events
+              <div className="flex flex-col items-center justify-center min-h-[200px] gap-3">
+                <div className="flex items-center gap-2 text-[#f0a050] text-sm">
+                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 11a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5zM8.75 4.75v4.5a.75.75 0 0 1-1.5 0v-4.5a.75.75 0 0 1 1.5 0z" />
+                  </svg>
+                  {failureCount >= 2
+                    ? `Failed to fetch data after ${failureCount} attempts — the server may be unreachable`
+                    : 'Error loading events'}
+                </div>
+                {onRefresh && (
+                  <button
+                    onClick={onRefresh}
+                    className="px-4 py-1.5 text-[12px] rounded-md border border-[#f0a050]/40 text-[#f0a050] hover:bg-[#f0a050]/10 transition-colors"
+                  >
+                    Retry now
+                  </button>
+                )}
               </div>
             ) : (
               <>
@@ -516,13 +547,15 @@ export default function VirtualizedEventList({
                         willChange: 'transform',
                       }}
                     >
-                      {visibleEvents.map((event) => {
-                        const isExpanded = expandedId === event.id;
+                      {visibleEvents.map((item) => {
+                        const isExpanded = hasDetailRow && expandedId === item.id;
                         return (
-                          <div key={event.id}>
+                          <div key={item.id}>
                             <div
-                              onClick={() => setExpandedId(isExpanded ? null : event.id)}
-                              className={`grid cursor-pointer border-t border-[#21262d]/50 transition-colors ${
+                              onClick={hasDetailRow ? () => setExpandedId(isExpanded ? null : item.id) : undefined}
+                              className={`grid border-t border-[#21262d]/50 transition-colors ${
+                                hasDetailRow ? 'cursor-pointer' : ''
+                              } ${
                                 isExpanded ? 'bg-[#161b22]' : 'hover:bg-[#161b22]/60'
                               }`}
                               style={{
@@ -536,11 +569,11 @@ export default function VirtualizedEventList({
                                   key={col.key}
                                   className="px-4 text-[12px] text-white truncate"
                                 >
-                                  {renderCell?.(col, event) ?? <DefaultCell col={col} event={event} />}
+                                  {renderCell?.(col, item) ?? <DefaultCell col={col} item={item} />}
                                 </div>
                               ))}
                             </div>
-                            {isExpanded && <div ref={detailMeasureRef} className="py-px"><MemoDetailRow event={event} rendererRef={renderDetailRowRef} /></div>}
+                            {isExpanded && <div ref={detailMeasureRef} className="py-px"><MemoDetailRow item={item} rendererRef={renderDetailRowRef as any} /></div>}
                           </div>
                         );
                       })}
@@ -553,7 +586,7 @@ export default function VirtualizedEventList({
         </div>
 
         {/* Resize handle + Filter sidebar */}
-        {showFilters && (
+        {showFilters && renderFilterPanel && (
           <>
             <div
               onMouseDown={onResizeStart}

@@ -93,7 +93,7 @@ export default function EventList({ visible = true }: { visible?: boolean }) {
   }, [search]);
 
   /* ---- Data fetch ---- */
-  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
+  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount, refetch, failureCount } = useModuleEvents({
     logName: 'Security',
     allEventIds: ALL_EVENT_IDS,
     eventFilters: filters.eventFilters,
@@ -230,12 +230,17 @@ export default function EventList({ visible = true }: { visible?: boolean }) {
       loadedCount={loadedCount}
       totalCount={totalCount}
       isComplete={isComplete}
+      onRefresh={refetch}
+      failureCount={failureCount}
       columns={COLUMNS}
       columnsStorageKey="winstride:listColumns"
       searchPlaceholder="Search... (ip:192.168 user:admin)"
       emptyMessage="No events found. Make sure the Agent is collecting Security events."
-      eventLabels={EVENT_LABELS}
-      eventIdColumnKey="eventId"
+      csvEnrichment={(col, e) => {
+        if (col.key === 'eventId') { const label = EVENT_LABELS[e.eventId]; return label ? `${e.eventId} ${label}` : undefined; }
+        if (col.key === 'time') return new Date(e.timeCreated).toISOString();
+        return undefined;
+      }}
       exportPrefix="winstride-events"
       renderCell={(col, event) => renderSeverityCell(col, event, sev) ?? renderCell(col, event)}
       renderDetailRow={(event) => <EventDetailRow event={event} detections={sev.detections.byEventId.get(event.id)} />}

@@ -53,6 +53,10 @@ export interface ModuleEventsResult {
   loadedCount: number;
   /** Error from the query */
   error: Error | null;
+  /** Manual refetch trigger */
+  refetch: () => void;
+  /** Number of consecutive failed fetch attempts */
+  failureCount: number;
 }
 
 export interface ModuleEventsOptions {
@@ -75,6 +79,8 @@ export function useModuleEvents(filters: ServerFilters, options?: ModuleEventsOp
     hasNextPage,
     fetchNextPage,
     error,
+    refetch,
+    failureCount,
   } = useInfiniteQuery<PagedResponse>({
     queryKey: ['module-events', filters.logName, odataFilter],
     queryFn: ({ pageParam = 0 }) =>
@@ -121,5 +127,7 @@ export function useModuleEvents(filters: ServerFilters, options?: ModuleEventsOp
     totalCount,
     loadedCount: events.length,
     error: error as Error | null,
+    refetch,
+    failureCount,
   };
 }

@@ -2,7 +2,7 @@ import type { WinEvent } from '../../security/shared/types';
 import type { Detection } from '../../../shared/detection/rules';
 import { SEVERITY_COLORS } from '../../../shared/detection/engine';
 import { parseScriptBlock, parseCommandExecution, findSuspiciousKeywords } from '../shared/parsePSEvent';
-import { Row, SectionLabel, RawDataToggle } from '../../../components/list/DetailPrimitives';
+import { Row, SectionLabel, RawDataToggle, CodeBlock, CopyIconButton } from '../../../components/list/DetailPrimitives';
 
 /* ------------------------------------------------------------------ */
 /*  Highlighted script text                                            */
@@ -95,9 +95,14 @@ export default function PSDetailRow({ event, detections }: { event: WinEvent; de
 
           {/* Script block text */}
           <SectionLabel>Script Block</SectionLabel>
-          <pre className="mt-1 p-3 bg-[#161b22] border border-[#21262d] rounded text-[11px] text-gray-200 font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap break-words">
-            <HighlightedScript text={sb.scriptBlockText} />
-          </pre>
+          <div className="relative group/cb mt-1">
+            <div className="absolute right-5 top-2 z-10 opacity-0 group-hover/cb:opacity-100 transition-opacity">
+              <CopyIconButton text={sb.scriptBlockText} title="Copy script block" />
+            </div>
+            <pre className="p-3 bg-[#161b22] border border-[#21262d] rounded text-[11px] text-gray-200 font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap break-words">
+              <HighlightedScript text={sb.scriptBlockText} />
+            </pre>
+          </div>
         </div>
 
         <RawDataToggle raw={event.eventData} />
@@ -148,9 +153,7 @@ export default function PSDetailRow({ event, detections }: { event: WinEvent; de
               {cmd.payload && (
                 <>
                   <SectionLabel>Payload</SectionLabel>
-                  <pre className="mt-1 p-3 bg-[#161b22] border border-[#21262d] rounded text-[11px] text-gray-200 font-mono overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
-                    {cmd.payload}
-                  </pre>
+                  <CodeBlock text={cmd.payload} className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-words" />
                 </>
               )}
               {suspiciousMatches.length > 0 && (

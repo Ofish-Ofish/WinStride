@@ -1,17 +1,23 @@
-import type { WinEvent } from '../modules/security/shared/types';
+/* ------------------------------------------------------------------ */
+/*  Base item constraint                                               */
+/* ------------------------------------------------------------------ */
+
+export interface ListItem {
+  id: number;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Column definition                                                  */
 /* ------------------------------------------------------------------ */
 
-export interface ColumnDef {
+export interface ColumnDef<T extends ListItem = ListItem> {
   key: string;
   label: string;
   defaultVisible: boolean;
   sortable: boolean;
   flex: number;
   minWidth: number;
-  getValue: (event: WinEvent) => string | number;
+  getValue: (item: T) => string | number;
   /** Additional field names for search (e.g. 'host' as alias for 'machine' column) */
   searchKeys?: string[];
 }
@@ -22,13 +28,13 @@ export interface ColumnDef {
 
 export type SortDir = 'asc' | 'desc' | null;
 
-export function sortEvents(
-  events: WinEvent[],
-  columns: ColumnDef[],
+export function sortEvents<T extends ListItem>(
+  events: T[],
+  columns: ColumnDef<T>[],
   key: string,
   dir: SortDir,
-  getSortValue?: (columnKey: string, event: WinEvent) => string | number | undefined,
-): WinEvent[] {
+  getSortValue?: (columnKey: string, item: T) => string | number | undefined,
+): T[] {
   if (!dir) return events;
   const col = columns.find((c) => c.key === key);
   if (!col) return events;
@@ -83,22 +89,22 @@ export function relativeTime(iso: string): string {
  * Field names are derived automatically from `columns[].key` + `columns[].searchKeys`.
  * Pass `getExtraFields` for fields not in columns (e.g. domain, subject, risk).
  */
-export function applySearch(
-  events: WinEvent[],
+export function applySearch<T extends ListItem>(
+  items: T[],
   search: string,
-  columns: ColumnDef[],
-  getExtraFields?: (event: WinEvent) => Record<string, string>,
-): WinEvent[] {
-  if (!search) return events;
+  columns: ColumnDef<T>[],
+  getExtraFields?: (item: T) => Record<string, string>,
+): T[] {
+  if (!search) return items;
   const terms = search.match(/(?:[^\s"]+|"[^"]*")+/g);
-  if (!terms || terms.length === 0) return events;
+  if (!terms || terms.length === 0) return items;
 
-  return events.filter((event) => {
+  return items.filter((item) => {
     // Build field map from columns
     const fields: Record<string, string> = {};
     const textParts: string[] = [];
     for (const col of columns) {
-      const val = String(col.getValue(event) ?? '');
+      const val = String(col.getValue(item) ?? '');
       fields[col.key] = val;
       if (col.searchKeys) {
         for (const alias of col.searchKeys) fields[alias] = val;
@@ -107,7 +113,7 @@ export function applySearch(
     }
     // Merge extra fields (non-column data + risk)
     if (getExtraFields) {
-      const extras = getExtraFields(event);
+      const extras = getExtraFields(item);
       for (const [k, v] of Object.entries(extras)) {
         fields[k] = v;
         textParts.push(v);

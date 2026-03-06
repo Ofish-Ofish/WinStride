@@ -86,7 +86,7 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
   }, [search]);
 
   /* ---- Data fetch ---- */
-  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
+  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount, refetch, failureCount } = useModuleEvents({
     logName: 'Microsoft-Windows-Sysmon/Operational',
     allEventIds: SYSMON_EVENT_IDS,
     eventFilters: filters.eventFilters,
@@ -190,12 +190,17 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
       loadedCount={loadedCount}
       totalCount={totalCount}
       isComplete={isComplete}
+      onRefresh={refetch}
+      failureCount={failureCount}
       columns={COLUMNS}
       columnsStorageKey="winstride:sysmonColumns"
       searchPlaceholder="Search... (process:cmd.exe ip:10.0 user:admin)"
       emptyMessage="No events found. Make sure the Agent is collecting Sysmon events."
-      eventLabels={SYSMON_EVENT_LABELS}
-      eventIdColumnKey="type"
+      csvEnrichment={(col, e) => {
+        if (col.key === 'type') { const label = SYSMON_EVENT_LABELS[e.eventId]; return label ? `${e.eventId} ${label}` : undefined; }
+        if (col.key === 'time') return new Date(e.timeCreated).toISOString();
+        return undefined;
+      }}
       exportPrefix="winstride-sysmon"
       renderCell={(col, event) => renderSeverityCell(col, event, sev) ?? renderCell(col, event)}
       renderDetailRow={(event) => <SysmonDetailRow event={event} detections={sev.detections.byEventId.get(event.id)} />}

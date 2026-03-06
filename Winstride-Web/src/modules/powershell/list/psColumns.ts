@@ -7,7 +7,7 @@ import { parseScriptBlock, parseCommandExecution } from '../shared/parsePSEvent'
 /*  Column definitions                                                 */
 /* ------------------------------------------------------------------ */
 
-export const COLUMNS: ColumnDef[] = [
+export const COLUMNS: ColumnDef<WinEvent>[] = [
   {
     key: 'severity',
     label: 'Risk',

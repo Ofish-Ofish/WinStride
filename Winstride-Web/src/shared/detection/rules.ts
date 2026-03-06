@@ -6,7 +6,7 @@ import { getBundledSigmaRules, getBundledCorrelationRules } from './sigma/bundle
 /* ------------------------------------------------------------------ */
 
 export type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical';
-export type Module = 'sysmon' | 'powershell' | 'security';
+export type Module = 'sysmon' | 'powershell' | 'security' | 'autoruns' | 'network';
 
 export interface DetectionRule {
   id: string;
@@ -69,6 +69,8 @@ function ensureRules(): Map<Module, DetectionRule[]> {
   map.set('sysmon', []);
   map.set('powershell', []);
   map.set('security', []);
+  map.set('autoruns', []);
+  map.set('network', []);
   for (const rule of all) {
     map.get(rule.module)!.push(rule);
   }

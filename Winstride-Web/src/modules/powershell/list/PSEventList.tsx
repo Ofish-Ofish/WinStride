@@ -21,8 +21,10 @@ import { COLUMNS, psJsonMapper } from './psColumns';
 function LevelBadge({ level, isSuspicious }: { level: string | null; isSuspicious: boolean }) {
   if (isSuspicious || level === 'Warning') {
     return (
-      <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-[#f0883e]/20 text-[#f0a050]">
-        Suspicious
+      <span className="flex items-center">
+        <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-[#f0883e]/20 text-[#f0a050]">
+          Suspicious
+        </span>
       </span>
     );
   }
@@ -99,7 +101,7 @@ export default function PSEventList({ visible }: { visible: boolean }) {
   }, [search]);
 
   /* ---- Data fetch ---- */
-  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
+  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount, refetch, failureCount } = useModuleEvents({
     logName: 'Microsoft-Windows-PowerShell/Operational',
     allEventIds: PS_EVENT_IDS,
     eventFilters: filters.eventFilters,
@@ -169,12 +171,17 @@ export default function PSEventList({ visible }: { visible: boolean }) {
       loadedCount={loadedCount}
       totalCount={totalCount}
       isComplete={isComplete}
+      onRefresh={refetch}
+      failureCount={failureCount}
       columns={COLUMNS}
       columnsStorageKey="winstride:psColumns"
       searchPlaceholder="Search... (command:Invoke path:temp level:Warning)"
       emptyMessage="No events found. Make sure the Agent is collecting PowerShell events."
-      eventLabels={PS_EVENT_LABELS}
-      eventIdColumnKey="eventId"
+      csvEnrichment={(col, e) => {
+        if (col.key === 'eventId') { const label = PS_EVENT_LABELS[e.eventId]; return label ? `${e.eventId} ${label}` : undefined; }
+        if (col.key === 'time') return new Date(e.timeCreated).toISOString();
+        return undefined;
+      }}
       exportPrefix="winstride-powershell"
       renderCell={(col, event) => renderSeverityCell(col, event, sev) ?? renderCell(col, event)}
       renderDetailRow={(event) => <PSDetailRow event={event} detections={sev.detections.byEventId.get(event.id)} />}

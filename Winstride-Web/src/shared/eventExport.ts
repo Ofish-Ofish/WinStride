@@ -1,5 +1,4 @@
-import type { WinEvent } from '../modules/security/shared/types';
-import type { ColumnDef } from './listUtils';
+import type { ListItem, ColumnDef } from './listUtils';
 
 /* ------------------------------------------------------------------ */
 /*  Download helper                                                    */
@@ -19,24 +18,18 @@ export function triggerDownload(content: string, filename: string, mime: string)
 /*  CSV export                                                         */
 /* ------------------------------------------------------------------ */
 
-export function exportCSV(
-  events: WinEvent[],
-  columns: ColumnDef[],
+export function exportCSV<T extends ListItem>(
+  items: T[],
+  columns: ColumnDef<T>[],
   visibleColumns: Set<string>,
-  eventLabels: Record<number, string>,
-  eventIdColumnKey: string,
   filenamePrefix: string,
+  enrichCell?: (col: ColumnDef<T>, item: T) => string | undefined,
 ): void {
   const cols = columns.filter((c) => visibleColumns.has(c.key));
   const header = cols.map((c) => c.label).join(',');
-  const rows = events.map((e) =>
+  const rows = items.map((item) =>
     cols.map((c) => {
-      let val = String(c.getValue(e));
-      if (c.key === eventIdColumnKey) {
-        const label = eventLabels[e.eventId];
-        if (label) val = `${e.eventId} ${label}`;
-      }
-      if (c.key === 'time') val = new Date(e.timeCreated).toISOString();
+      let val = enrichCell?.(c, item) ?? String(c.getValue(item));
       if (val.includes(',') || val.includes('"') || val.includes('\n')) {
         val = `"${val.replace(/"/g, '""')}"`;
       }
@@ -53,12 +46,12 @@ export function exportCSV(
 /*  JSON export                                                        */
 /* ------------------------------------------------------------------ */
 
-export function exportJSON(
-  events: WinEvent[],
-  mapper: (event: WinEvent) => Record<string, unknown>,
+export function exportJSON<T extends ListItem>(
+  items: T[],
+  mapper: (item: T) => Record<string, unknown>,
   filenamePrefix: string,
 ): void {
-  const data = events.map(mapper);
+  const data = items.map(mapper);
   const date = new Date().toISOString().slice(0, 10);
   triggerDownload(JSON.stringify(data, null, 2), `${filenamePrefix}-${date}.json`, 'application/json');
 }
