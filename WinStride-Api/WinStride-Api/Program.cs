@@ -1,4 +1,5 @@
 using WinStrideApi.Models;
+using WinStride_Api.Models;
 using WinStrideApi.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.OData;
@@ -19,6 +20,7 @@ modelBuilder.EntitySet<WinEvent>("Event");
 modelBuilder.EntitySet<Heartbeat>("Heartbeat");
 modelBuilder.EntitySet<TCPView>("NetworkConnections");  
 modelBuilder.EntitySet<AutorunView>("Autoruns");
+modelBuilder.EntitySet<WinProcess>("WinProcesses");
 
 builder.Services.AddControllers().AddNewtonsoftJson().AddOData(options =>
     options.Select().Filter().OrderBy().Count().SetMaxTop(5000).AddRouteComponents(

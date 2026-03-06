@@ -11,6 +11,7 @@ const logTypes = [
   { name: 'Autoruns', path: '/autoruns' },
   { name: 'Heartbeats', path: '/heartbeats' },
   { name: 'Network', path: '/network' },
+  { name: 'Processes', path: '/processes' },
 ];
 
 export default function Sidebar({ open }: SidebarProps) {

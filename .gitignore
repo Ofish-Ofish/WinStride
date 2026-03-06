@@ -41,4 +41,12 @@ scripts/
 Winstride-Web/docs/
 
 # Screenshots
-*.png.worktrees/
+*.png
+
+# Binary archives
+*.zip
+
+# Agent logs
+agent_logs.txt
+
+.worktrees/

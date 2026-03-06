@@ -2,6 +2,7 @@ import type { WinEvent } from '../modules/security/shared/types';
 import type { AutorunEntry } from '../modules/autoruns/shared/types';
 import type { Heartbeat } from '../modules/heartbeats/shared/types';
 import type { NetworkConnection } from '../modules/network/shared/types';
+import type { WinProcess } from '../modules/processes/shared/types';
 
 const API_BASE = '/api';
 
@@ -81,4 +82,8 @@ export function fetchHeartbeats(params?: Record<string, string>) {
 
 export function fetchNetworkConnections(params?: Record<string, string>) {
   return fetchOData<NetworkConnection>('/odata/NetworkConnections', { $count: 'true', $orderby: 'timeCreated desc', ...params });
+}
+
+export function fetchProcesses(params?: Record<string, string>) {
+  return fetchOData<WinProcess>('/odata/WinProcesses', { $count: 'true', $orderby: 'imageName asc', ...params });
 }
