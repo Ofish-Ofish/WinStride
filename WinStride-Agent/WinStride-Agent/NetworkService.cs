@@ -101,6 +101,7 @@ namespace WinStrideAgent.Services
                             string localAddr = result.Properties["LocalAddress"].Value?.ToString() ?? "";
                             string remoteAddr = result.Properties["RemoteAddress"].Value?.ToString() ?? "";
 
+                            // Constraint: IPv4 vs IPv6 distinction
                             string protocolLabel = result.ToString().Contains("TCP") ? "TCP" : "UDP";
                             protocolLabel += (localAddr.Contains(":") || remoteAddr.Contains(":")) ? "v6" : "v4";
 
@@ -121,13 +122,14 @@ namespace WinStrideAgent.Services
                                 try
                                 {
                                     connection.ModuleName = process.MainModule?.FileName ?? "System Process";
-
-                                    connection.SentBytes = process.VirtualMemorySize64;
-                                    connection.RecvBytes = process.WorkingSet64;
+                                    connection.SentBytes = 0;
+                                    connection.RecvBytes = 0;
                                 }
                                 catch
                                 {
                                     connection.ModuleName = "N/A";
+                                    connection.SentBytes = 0;
+                                    connection.RecvBytes = 0;
                                 }
                             }
 
@@ -135,7 +137,7 @@ namespace WinStrideAgent.Services
                         }
                         catch (Exception ex)
                         {
-                            Debug.WriteLine($"[Network] Skipping connection row due to error: {ex.Message}");
+                            Debug.WriteLine($"[Network] Skipping connection row: {ex.Message}");
                         }
                     }
                 }
