@@ -22,6 +22,7 @@ modelBuilder.EntitySet<TCPView>("NetworkConnections");
 modelBuilder.EntitySet<AutorunView>("Autoruns");
 modelBuilder.EntitySet<WinProcess>("WinProcesses");
 
+
 builder.Services.AddControllers().AddNewtonsoftJson().AddOData(options =>
     options.Select().Filter().OrderBy().Count().SetMaxTop(5000).AddRouteComponents(
         "api",
