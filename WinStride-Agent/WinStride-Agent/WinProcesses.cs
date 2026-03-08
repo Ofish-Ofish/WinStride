@@ -79,7 +79,7 @@ namespace WinStrideAgent.Services
                 ProcessStartInfo startInfo = new ProcessStartInfo
                 {
                     FileName = "wmic.exe",
-                    Arguments = "process get Name,ProcessId,ParentProcessId,SessionId,WorkingSetSize /FORMAT:CSV",
+                    Arguments = "process get Name,ExecutablePath,ProcessId,ParentProcessId,SessionId,WorkingSetSize /FORMAT:CSV",
                     RedirectStandardOutput = true,
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -102,17 +102,18 @@ namespace WinStrideAgent.Services
                             if (string.IsNullOrWhiteSpace(line)) continue;
 
                             string[] parts = line.Split(',');
-                            if (parts.Length < 6) continue;
+                            if (parts.Length < 7) continue;
 
                             try
                             {
                                 WinProcess wp = new WinProcess
                                 {
-                                    ImageName = parts[1].Trim(),
-                                    ParentPid = int.TryParse(parts[2], out int ppid) ? ppid : 0,
-                                    Pid = int.TryParse(parts[3], out int pid) ? pid : 0,
-                                    SessionId = int.TryParse(parts[4], out int sid) ? sid : 0,
-                                    WorkingSetSize = long.TryParse(parts[5], out long mem) ? mem : 0
+                                    Path = parts[1].Trim(),
+                                    ImageName = parts[2].Trim(),
+                                    ParentPid = int.TryParse(parts[3], out int ppid) ? ppid : 0,
+                                    Pid = int.TryParse(parts[4], out int pid) ? pid : 0,
+                                    SessionId = int.TryParse(parts[5], out int sid) ? sid : 0,
+                                    WorkingSetSize = long.TryParse(parts[6], out long mem) ? mem : 0
                                 };
 
                                 snapshots.Add(wp);

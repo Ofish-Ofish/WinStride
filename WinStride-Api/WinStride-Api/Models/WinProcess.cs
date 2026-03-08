@@ -26,5 +26,7 @@ namespace WinStride_Api.Models
         public int SessionId { get; set; }
 
         public long WorkingSetSize { get; set; }
+
+        public string? Path { get; set; }
     }
 }
