@@ -1,12 +1,14 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OData.Query;
 using Microsoft.AspNetCore.OData.Routing.Controllers;
 using Microsoft.EntityFrameworkCore;
-using WinStrideApi.Data;
 using WinStride_Api.Models;
+using WinStrideApi.Data;
 
 namespace WinStrideApi.Controllers
 {
+    [Authorize]
     public class ProcessController : ODataController
     {
         private readonly ApplicationDbContext _context;

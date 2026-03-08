@@ -1,16 +1,18 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OData.Query;
 using Microsoft.AspNetCore.OData.Routing.Controllers;
 using Microsoft.EntityFrameworkCore;
-using WinStrideApi.Data;
-using WinStrideApi.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using WinStrideApi.Data;
+using WinStrideApi.Models;
 
 namespace WinStrideApi.Controllers
 {
+    [Authorize]
     public class AutorunsController : ODataController
     {
         private readonly ApplicationDbContext _context;

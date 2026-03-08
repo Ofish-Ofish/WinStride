@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OData.Query;
 using Microsoft.AspNetCore.OData.Routing.Controllers;
@@ -7,6 +8,7 @@ using WinStrideApi.Models;
 
 namespace WinStrideApi.Controllers
 {
+    [Authorize]
     public class NetworkController : ODataController
     {
         private readonly ApplicationDbContext _context;

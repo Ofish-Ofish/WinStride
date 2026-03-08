@@ -1,12 +1,15 @@
-﻿using System.Diagnostics.Eventing.Reader;
+﻿using Newtonsoft.Json;
+using System.Diagnostics.Eventing.Reader;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Newtonsoft.Json;
+using WinStrideAgent.Services;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
-using WinStrideAgent.Services;
+using System.Net.Http;
+using System.Security.Cryptography.X509Certificates;
 class Agent
 {
-    private static readonly HttpClient client = new HttpClient();
+    private static HttpClient client;
 
     static async Task Main()
     {
@@ -33,6 +36,9 @@ class Agent
             string projectRoot = GetSourceDirectory();
             string configPath = Path.Combine(projectRoot, "config.yaml");
             AppConfig fullConfig = LoadConfig(configPath);
+
+            string certSubject = fullConfig.Global.CertSubject ?? Environment.MachineName;
+            client = CreateAuthenticatedClient(certSubject);
 
             if (string.IsNullOrWhiteSpace(fullConfig.Global.BaseUrl))
             {
@@ -176,6 +182,7 @@ class Agent
                 .Build();
 
             var config = deserializer.Deserialize<AppConfig>(yamlContent);
+
             return config ?? new AppConfig();
         }
         catch (Exception ex)
@@ -238,5 +245,32 @@ class Agent
 
             await Task.Delay(TimeSpan.FromSeconds(intervalSeconds));
         }
+    }
+
+    private static HttpClient CreateAuthenticatedClient(string certSubject)
+    {
+        HttpClientHandler handler = new HttpClientHandler();
+
+        using (X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser))
+        {
+            store.Open(OpenFlags.ReadOnly);
+
+            X509Certificate2Collection certs = store.Certificates.Find(
+                X509FindType.FindByThumbprint,
+                certSubject,
+                validOnly: false); 
+
+            if (certs.Count > 0)
+            {
+                handler.ClientCertificates.Add(certs[0]);
+                Logger.WriteLine($"[Auth] Successfully loaded cert: {certs[0].Thumbprint}");
+            }
+            else
+            {
+                Logger.WriteLine($"[CRITICAL] Certificate NOT FOUND in Store! Searched for Thumbprint: {certSubject}");
+            }
+        }
+
+        return new HttpClient(handler);
     }
 }

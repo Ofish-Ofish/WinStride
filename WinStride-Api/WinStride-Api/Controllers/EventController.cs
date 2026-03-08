@@ -1,15 +1,16 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OData.Query;
 using Microsoft.AspNetCore.OData.Routing.Controllers;
+using Microsoft.EntityFrameworkCore;
 using WinStrideApi.Data;
 using WinStrideApi.Models;
-using Microsoft.EntityFrameworkCore;
 
 namespace WinStride_Api.Controllers
 {
+    [Authorize]
     public class EventController : ODataController
     {
-
         private readonly ApplicationDbContext _context;
 
         public EventController(ApplicationDbContext context)
