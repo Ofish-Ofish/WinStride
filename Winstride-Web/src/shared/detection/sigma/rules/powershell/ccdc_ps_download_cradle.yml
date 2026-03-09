@@ -1,0 +1,23 @@
+title: PowerShell Download Cradle in Script Block
+id: b0000002-0000-0000-0000-000000000002
+name: ps_download_cradle
+status: stable
+description: A PowerShell script block contains .NET download cradle patterns for fetching remote payloads. Excludes Invoke-WebRequest/BitsTransfer which defenders use routinely.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.execution
+    - attack.t1105
+logsource:
+    category: ps_script
+    product: windows
+detection:
+    selection:
+        ScriptBlockText|contains:
+            - 'DownloadString'
+            - 'DownloadFile'
+            - 'Net.WebClient'
+            - 'WebClient'
+            - 'Invoke-RestMethod'
+    condition: selection
+level: high

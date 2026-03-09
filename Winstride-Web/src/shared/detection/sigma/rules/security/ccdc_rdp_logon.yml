@@ -16,4 +16,4 @@ detection:
         EventID: 4624
         LogonType: '10'
     condition: selection
-level: high
+level: medium

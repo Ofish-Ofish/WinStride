@@ -1,0 +1,31 @@
+title: Known Attack Tool Named Pipe
+id: b0000001-0000-0000-0000-000000000021
+name: attack_tool_named_pipe
+status: stable
+description: A named pipe matching known attack tool patterns was created — indicates Cobalt Strike, Metasploit, or PsExec activity.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1570
+logsource:
+    category: pipe_created
+    product: windows
+detection:
+    selection:
+        PipeName|contains:
+            - '\MSSE-'
+            - '\msagent_'
+            - '\postex_'
+            - '\status_'
+            - '\mojo_'
+            - '\interprocess_'
+            - '\samr_'
+            - '\netlogon_'
+            - '\lsarpc_'
+            - '\ntsvcs_'
+    selection_psexec:
+        PipeName:
+            - '\PSEXESVC'
+    condition: 1 of selection_*
+level: high

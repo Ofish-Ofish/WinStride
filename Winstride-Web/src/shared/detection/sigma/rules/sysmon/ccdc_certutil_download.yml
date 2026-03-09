@@ -1,0 +1,26 @@
+title: Certutil Download or Decode
+id: b0000001-0000-0000-0000-000000000012
+name: certutil_download
+status: stable
+description: Certutil.exe used to download files or decode Base64 data — classic LOLBAS abuse for staging payloads.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.command-and-control
+    - attack.t1105
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        Image|endswith: '\certutil.exe'
+    selection_action:
+        CommandLine|contains:
+            - '-urlcache'
+            - '-decode'
+            - '-decodehex'
+            - '/urlcache'
+            - '/decode'
+            - '/decodehex'
+    condition: selection and selection_action
+level: high

@@ -1,0 +1,28 @@
+title: Connection to Suspicious Port
+id: b0000001-0000-0000-0000-000000000013
+name: suspicious_port_connection
+status: stable
+description: A process connected to a commonly abused port (C2, reverse shell, backdoor).
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.command-and-control
+    - attack.t1571
+logsource:
+    category: network_connection
+    product: windows
+detection:
+    selection:
+        DestinationPort:
+            - 4444
+            - 5555
+            - 6666
+            - 8888
+            - 1234
+            - 9999
+            - 31337
+            - 12345
+            - 4443
+            - 1337
+    condition: selection
+level: medium

@@ -1,0 +1,28 @@
+title: LSASS Memory Access (Credential Dumping)
+id: b0000001-0000-0000-0000-000000000018
+name: lsass_memory_access
+status: stable
+description: A process accessed LSASS memory — indicates credential dumping (Mimikatz, comsvcs.dll MiniDump, etc.).
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.credential-access
+    - attack.t1003.001
+logsource:
+    category: process_access
+    product: windows
+detection:
+    selection:
+        TargetImage|endswith: '\lsass.exe'
+    filter_system:
+        SourceImage|endswith:
+            - '\svchost.exe'
+            - '\lsm.exe'
+            - '\csrss.exe'
+            - '\wininit.exe'
+            - '\wmiprvse.exe'
+            - '\msiexec.exe'
+            - '\taskhostw.exe'
+            - '\MsMpEng.exe'
+    condition: selection and not filter_system
+level: critical

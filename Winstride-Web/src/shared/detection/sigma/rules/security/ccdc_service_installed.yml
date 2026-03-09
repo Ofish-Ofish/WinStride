@@ -2,7 +2,7 @@ title: New Service Installed
 id: a0000001-0000-0000-0000-000000000010
 name: service_installed
 status: stable
-description: A new Windows service was installed. Services run as SYSTEM and survive reboots — a primary persistence and privilege escalation vector.
+description: A new Windows service was installed. Services run as SYSTEM and survive reboots — a primary persistence and privilege escalation vector. Filters out system-path services and machine accounts.
 author: WinStride CCDC
 date: 2025-01-01
 tags:
@@ -14,5 +14,13 @@ logsource:
 detection:
     selection:
         EventID: 4697
-    condition: selection
-level: high
+    filter_system_path:
+        ServiceFileName|startswith:
+            - 'C:\Windows\System32\'
+            - 'C:\Windows\SysWOW64\'
+            - '"C:\Windows\System32\'
+            - '"C:\Windows\SysWOW64\'
+    filter_machine:
+        SubjectUserName|endswith: '$'
+    condition: selection and not filter_system_path and not filter_machine
+level: medium

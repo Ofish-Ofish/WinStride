@@ -1,0 +1,26 @@
+title: PowerShell Process Injection APIs
+id: b0000002-0000-0000-0000-000000000005
+name: ps_process_injection
+status: stable
+description: A PowerShell script block references Win32 memory/injection APIs — shellcode injection indicator.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1055
+logsource:
+    category: ps_script
+    product: windows
+detection:
+    selection:
+        ScriptBlockText|contains:
+            - 'VirtualAlloc'
+            - 'CreateThread'
+            - 'WriteProcessMemory'
+            - 'CreateRemoteThread'
+            - 'NtCreateThread'
+            - 'VirtualProtect'
+            - 'RtlMoveMemory'
+            - 'QueueUserAPC'
+    condition: selection
+level: critical

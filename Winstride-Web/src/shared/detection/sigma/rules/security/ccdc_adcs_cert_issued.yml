@@ -15,4 +15,4 @@ detection:
     selection:
         EventID: 4887
     condition: selection
-level: medium
+level: high

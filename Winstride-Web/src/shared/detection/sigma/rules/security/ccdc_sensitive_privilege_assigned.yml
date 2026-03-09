@@ -23,5 +23,6 @@ detection:
             - 'SeBackupPrivilege'
             - 'SeRestorePrivilege'
             - 'SeTakeOwnershipPrivilege'
+            - 'SeImpersonatePrivilege'
     condition: selection and 1 of dangerous_privs
 level: high

@@ -1,0 +1,28 @@
+title: Shell Process Made Network Connection
+id: b0000001-0000-0000-0000-000000000014
+name: shell_network_connection
+status: stable
+description: A command shell made an outbound network connection — possible reverse shell or C2 callback. Excludes WinRM ports used by defenders for PowerShell remoting.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.execution
+    - attack.t1059
+logsource:
+    category: network_connection
+    product: windows
+detection:
+    selection:
+        Image|endswith:
+            - '\cmd.exe'
+            - '\powershell.exe'
+            - '\pwsh.exe'
+            - '\wscript.exe'
+            - '\cscript.exe'
+            - '\mshta.exe'
+    filter_winrm:
+        DestinationPort:
+            - 5985
+            - 5986
+    condition: selection and not filter_winrm
+level: high

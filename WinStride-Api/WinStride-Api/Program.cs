@@ -100,6 +100,11 @@ builder.Services.AddControllers().AddNewtonsoftJson().AddOData(options =>
         "api",
         modelBuilder.GetEdmModel()));
 
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -131,6 +136,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseResponseCompression();
 app.UseCors("AllowReactUI");
 
 if (tlsEnabled)

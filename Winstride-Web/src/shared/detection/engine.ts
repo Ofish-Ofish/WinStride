@@ -120,6 +120,7 @@ export function runDetections(
     const event = events[i];
     const rules = indexed.combined.get(event.eventId) ?? indexed.universal;
     for (const rule of rules) {
+      if (rule.severity === 'info') continue;
       if (rule.match(event)) {
         addDetection(event.id, makeDet(rule));
       }
@@ -256,7 +257,7 @@ function runDetectionsAsync(
     // Process correlation rules asynchronously, yielding between each
     let ruleIdx = 0;
     function processCorrelations() {
-      if (token.cancelled) return;
+      if (token.cancelled) { setActiveMachineAliases(null); return; }
       const deadline = performance.now() + CHUNK_BUDGET_MS;
 
       if (machineAliases) setActiveMachineAliases(machineAliases);
@@ -269,11 +270,12 @@ function runDetectionsAsync(
         }
         ruleIdx++;
         if (performance.now() >= deadline) {
+          setActiveMachineAliases(null);
           setTimeout(processCorrelations, 0);
           return;
         }
       }
-      if (machineAliases) setActiveMachineAliases(null);
+      setActiveMachineAliases(null);
 
       onComplete(buildResult());
     }
@@ -293,6 +295,7 @@ function runDetectionsAsync(
       const event = events[i];
       const rules = indexed.combined.get(event.eventId) ?? indexed.universal;
       for (const rule of rules) {
+        if (rule.severity === 'info') continue;
         if (rule.match(event)) addDet(event.id, makeDet(rule));
       }
       i++;

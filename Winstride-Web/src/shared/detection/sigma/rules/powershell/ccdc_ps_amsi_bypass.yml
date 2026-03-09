@@ -1,0 +1,24 @@
+title: AMSI Bypass Attempt
+id: b0000002-0000-0000-0000-000000000003
+name: ps_amsi_bypass
+status: stable
+description: A PowerShell script block attempts to bypass AMSI (Anti-Malware Scan Interface) — strong indicator of malicious activity.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1562.001
+logsource:
+    category: ps_script
+    product: windows
+detection:
+    selection_amsi:
+        ScriptBlockText|contains|all:
+            - 'amsi'
+            - 'Utils'
+    selection_init:
+        ScriptBlockText|contains: 'amsiInitFailed'
+    selection_context:
+        ScriptBlockText|contains: 'AmsiContext'
+    condition: 1 of selection_*
+level: critical

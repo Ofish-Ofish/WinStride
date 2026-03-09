@@ -1,8 +1,8 @@
-title: AD Delegation Rights Modified (RBCD Backdoor)
+title: Classic Constrained Delegation Modified
 id: a0000001-0000-0000-0000-000000000044
 name: delegation_backdoor
 status: stable
-description: Delegation rights were granted to a user account (AllowedToDelegateTo changed). Resource-Based Constrained Delegation enables lateral movement without credentials.
+description: Constrained delegation rights were granted to a user account (AllowedToDelegateTo changed). Attackers set delegation to enable lateral movement to specific services (e.g., CIFS on a DC).
 author: WinStride CCDC
 date: 2025-01-01
 tags:

@@ -17,6 +17,7 @@ detection:
     disabled:
         AuditPolicyChanges|contains:
             - '%%8448'
+            - '%%8449'
             - '%%8450'
     condition: selection and 1 of disabled
 level: critical

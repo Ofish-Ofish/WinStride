@@ -166,7 +166,7 @@ export function compileSigmaRule(raw: SigmaRuleYaml): DetectionRule | null {
 
   const severity = LEVEL_MAP[level ?? 'informational'] ?? 'info';
   const mitre = extractMitre(tags);
-  const ruleId = id ? `SIGMA-${id.slice(0, 8)}` : `SIGMA-${(title ?? 'unknown').slice(0, 20)}`;
+  const ruleId = id ? `SIGMA-${id}` : `SIGMA-${(title ?? 'unknown').slice(0, 20)}`;
 
   // Extract EventIDs from detection blocks (for rules without logsource eventIds)
   const detectedEventIds = mapping.eventIds ?? extractEventIdsFromBlocks(detection);

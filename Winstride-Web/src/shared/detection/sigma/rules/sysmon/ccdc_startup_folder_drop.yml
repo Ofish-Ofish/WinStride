@@ -1,0 +1,20 @@
+title: File Dropped in Startup Folder
+id: b0000001-0000-0000-0000-000000000016
+name: startup_folder_drop
+status: stable
+description: A file was created in a Windows startup folder — classic persistence mechanism.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1547.001
+logsource:
+    category: file_event
+    product: windows
+detection:
+    selection:
+        TargetFilename|contains:
+            - '\Startup\'
+            - '\Start Menu\Programs\Startup\'
+    condition: selection
+level: high

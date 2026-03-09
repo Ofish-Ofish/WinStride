@@ -23,6 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
-# Sigma rules — ignore fetched rules, track hand-crafted CCDC security rules
+# Sigma rules — ignore fetched rules, track hand-crafted CCDC rules
 src/shared/detection/sigma/rules/*
 !src/shared/detection/sigma/rules/security/
+!src/shared/detection/sigma/rules/powershell/
+!src/shared/detection/sigma/rules/sysmon/

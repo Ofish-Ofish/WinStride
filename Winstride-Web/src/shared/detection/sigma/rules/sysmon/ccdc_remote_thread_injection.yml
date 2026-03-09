@@ -1,0 +1,35 @@
+title: Remote Thread Created in Another Process
+id: b0000001-0000-0000-0000-000000000019
+name: remote_thread_injection
+status: stable
+description: A process created a remote thread in another process — common technique for process injection and code execution.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1055
+logsource:
+    category: create_remote_thread
+    product: windows
+detection:
+    selection:
+        EventID: 8
+    filter_system:
+        SourceImage|endswith:
+            - '\svchost.exe'
+            - '\csrss.exe'
+            - '\lsass.exe'
+            - '\services.exe'
+            - '\wininit.exe'
+            - '\winlogon.exe'
+            - '\MsMpEng.exe'
+            - '\RuntimeBroker.exe'
+            - '\explorer.exe'
+            - '\SearchHost.exe'
+            - '\ShellExperienceHost.exe'
+            - '\dllhost.exe'
+            - '\backgroundTaskHost.exe'
+            - '\taskhostw.exe'
+            - '\sihost.exe'
+    condition: selection and not filter_system
+level: high

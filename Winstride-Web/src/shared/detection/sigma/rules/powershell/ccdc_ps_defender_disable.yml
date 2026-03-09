@@ -1,0 +1,26 @@
+title: Windows Defender Disabled or Exclusion Added
+id: b0000002-0000-0000-0000-000000000008
+name: ps_defender_disable
+status: stable
+description: A PowerShell script block modifies Windows Defender settings — disabling protection or adding exclusions.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1562.001
+logsource:
+    category: ps_script
+    product: windows
+detection:
+    selection_cmdlet:
+        ScriptBlockText|contains: 'Set-MpPreference'
+    selection_action:
+        ScriptBlockText|contains:
+            - 'DisableRealtimeMonitoring'
+            - 'ExclusionPath'
+            - 'ExclusionExtension'
+            - 'ExclusionProcess'
+            - 'DisableBehaviorMonitoring'
+            - 'DisableIOAVProtection'
+    condition: selection_cmdlet and selection_action
+level: high

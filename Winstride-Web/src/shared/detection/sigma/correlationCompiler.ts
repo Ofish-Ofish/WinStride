@@ -118,7 +118,7 @@ export function compileCorrelationRule(
   const severity: Severity = LEVEL_MAP[raw.level ?? 'informational'] ?? 'info';
   const mitre = extractMitre(raw.tags);
   const ruleId = raw.id
-    ? `SIGMA-COR-${raw.id.slice(0, 8)}`
+    ? `SIGMA-COR-${raw.id}`
     : `SIGMA-COR-${(raw.title ?? 'unknown').slice(0, 16)}`;
 
   const config: CorrelationConfig = {

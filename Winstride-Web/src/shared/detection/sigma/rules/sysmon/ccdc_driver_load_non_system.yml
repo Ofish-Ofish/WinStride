@@ -1,0 +1,25 @@
+title: Driver Loaded from Non-System Directory
+id: b0000001-0000-0000-0000-000000000020
+name: driver_load_non_system
+status: stable
+description: A kernel driver was loaded from outside expected directories — possible rootkit or vulnerable driver exploitation (BYOVD).
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1543.003
+logsource:
+    category: driver_load
+    product: windows
+detection:
+    selection:
+        EventID: 6
+    filter_legit:
+        ImageLoaded|startswith:
+            - 'C:\Windows\System32\drivers\'
+            - 'C:\Windows\System32\DRIVERS\'
+            - 'C:\Windows\SysWOW64\'
+            - 'C:\Program Files\'
+            - 'C:\Program Files (x86)\'
+    condition: selection and not filter_legit
+level: high

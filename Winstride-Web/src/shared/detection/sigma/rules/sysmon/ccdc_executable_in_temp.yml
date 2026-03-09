@@ -1,0 +1,37 @@
+title: Executable Dropped in Temp Directory
+id: b0000001-0000-0000-0000-000000000017
+name: executable_in_temp
+status: stable
+description: An executable or script was dropped in a temporary directory — common malware staging behavior. Filters out known installer processes.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1105
+logsource:
+    category: file_event
+    product: windows
+detection:
+    selection_dir:
+        TargetFilename|contains:
+            - '\Temp\'
+            - '\Tmp\'
+    selection_ext:
+        TargetFilename|endswith:
+            - '.exe'
+            - '.dll'
+            - '.scr'
+            - '.bat'
+            - '.ps1'
+            - '.vbs'
+            - '.hta'
+    filter_installers:
+        Image|endswith:
+            - '\msiexec.exe'
+            - '\TiWorker.exe'
+            - '\TrustedInstaller.exe'
+            - '\setup.exe'
+            - '\wuauclt.exe'
+            - '\svchost.exe'
+    condition: selection_dir and selection_ext and not filter_installers
+level: medium

@@ -1,0 +1,30 @@
+title: PowerShell Offensive Reconnaissance Commands
+id: b0000002-0000-0000-0000-000000000009
+name: ps_recon_commands
+status: stable
+description: A PowerShell script block runs PowerView or other offensive AD reconnaissance commands. Standard AD module cmdlets (Get-ADUser, etc.) are excluded since defenders use them routinely.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.discovery
+    - attack.t1087
+logsource:
+    category: ps_script
+    product: windows
+detection:
+    selection:
+        ScriptBlockText|contains:
+            - 'Get-NetLocalGroup'
+            - 'Get-NetUser'
+            - 'Get-NetSession'
+            - 'Get-NetShare'
+            - 'Get-DomainUser'
+            - 'Get-DomainComputer'
+            - 'Get-DomainGroup'
+            - 'Get-DomainController'
+            - 'Invoke-BloodHound'
+            - 'Invoke-ShareFinder'
+            - 'Find-LocalAdminAccess'
+            - 'Invoke-UserHunter'
+    condition: selection
+level: medium

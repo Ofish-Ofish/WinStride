@@ -5,7 +5,7 @@ import type { WinEvent } from '../../modules/security/shared/types';
 import type { FilterState } from '../../components/filter/filterPrimitives';
 import { resolveTriState } from '../../components/filter/filterPrimitives';
 
-const PAGE_SIZE = 500;
+const PAGE_SIZE = 2000;
 
 export interface ServerFilters {
   logName: string;

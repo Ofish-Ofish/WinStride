@@ -1,0 +1,20 @@
+title: Resource-Based Constrained Delegation Modified (RBCD)
+id: a0000001-0000-0000-0000-000000000065
+name: rbcd_backdoor
+status: stable
+description: The msDS-AllowedToActOnBehalfOfOtherIdentity attribute was modified on a computer object. This is the primary indicator of RBCD attacks — the attacker configures a controlled account to impersonate any user to the target machine. Requires Directory Service Changes auditing.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.lateral-movement
+    - attack.t1098
+logsource:
+    product: windows
+    service: security
+detection:
+    selection:
+        EventID: 5136
+        AttributeLDAPDisplayName: 'msDS-AllowedToActOnBehalfOfOtherIdentity'
+    condition: selection
+level: critical

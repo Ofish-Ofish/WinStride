@@ -67,6 +67,7 @@ function meetsCondition(value: number, cond: CorrelationCondition): boolean {
       case 'lte': if (!(value <= t)) return false; break;
       case 'eq':  if (!(value === t)) return false; break;
       case 'neq': if (!(value !== t)) return false; break;
+      default: console.warn(`[Sigma] Unknown condition operator: "${op}"`); return false;
     }
   }
   return true;
@@ -83,6 +84,8 @@ function getGroupKey(
   aliases: Map<string, Map<string, string>> | undefined,
   ruleId?: string,
 ): string {
+  // Empty group-by means all events share one global bucket
+  if (groupBy.length === 0) return '*';
   return groupBy
     .map((field) => {
       // Check aliases: if this groupBy field is a virtual alias, resolve it

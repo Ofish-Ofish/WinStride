@@ -1,0 +1,27 @@
+title: LOLBAS Binary Made Network Connection
+id: b0000001-0000-0000-0000-000000000015
+name: lolbas_network_connection
+status: stable
+description: A LOLBAS binary made an outbound network connection — possible download or exfiltration.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.command-and-control
+    - attack.t1105
+logsource:
+    category: network_connection
+    product: windows
+detection:
+    selection:
+        Image|endswith:
+            - '\certutil.exe'
+            - '\bitsadmin.exe'
+            - '\mshta.exe'
+            - '\regsvr32.exe'
+            - '\rundll32.exe'
+            - '\msiexec.exe'
+            - '\cmstp.exe'
+            - '\msbuild.exe'
+            - '\wmic.exe'
+    condition: selection
+level: high

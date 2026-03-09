@@ -1,0 +1,22 @@
+title: PowerShell Invoke-Expression Usage
+id: b0000002-0000-0000-0000-000000000007
+name: ps_invoke_expression
+status: stable
+description: A PowerShell script block uses Invoke-Expression — often used to execute obfuscated or dynamic code.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.execution
+    - attack.t1059.001
+logsource:
+    category: ps_script
+    product: windows
+detection:
+    selection:
+        ScriptBlockText|contains:
+            - 'Invoke-Expression'
+            - 'IEX '
+            - 'IEX('
+            - '| IEX'
+    condition: selection
+level: medium
