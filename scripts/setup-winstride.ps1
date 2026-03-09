@@ -222,17 +222,32 @@ if (-not $SkipPrerequisiteCheck) {
     if (-not $dotnetOk) {
         Write-Warn ".NET 8 SDK not found."
         if (Request-UserConsent "    Install .NET 8 SDK automatically?") {
-            $dotnetUrl = "https://download.visualstudio.microsoft.com/download/pr/513d13b7-b456-45af-942b-ef6dce57e3f1/a]]27a5e397e1407adbe67e9e97c039b1/dotnet-sdk-8.0.404-win-x64.exe"
-            $installed = Install-Prerequisite `
-                -Name ".NET 8 SDK" `
-                -InstallerUrl $dotnetUrl `
-                -InstallerArgs "/install /quiet /norestart" `
-                -FileName "dotnet-sdk-8.0-win-x64.exe"
+            Write-Info "Downloading official dotnet-install script..."
+            $dotnetInstallScript = Join-Path $env:TEMP "dotnet-install.ps1"
+            try {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                Invoke-WebRequest -Uri "https://dot.net/v1/dotnet-install.ps1" -OutFile $dotnetInstallScript -UseBasicParsing -ErrorAction Stop
+                Write-Ok "Install script downloaded"
 
-            if (-not $installed -or -not (Test-Command "dotnet")) {
-                Write-Err ".NET 8 SDK installation failed or not in PATH."
+                Write-Info "Installing .NET 8 SDK (this may take a few minutes)..."
+                & $dotnetInstallScript -Channel 8.0 -InstallDir "${env:ProgramFiles}\dotnet" -ErrorAction Stop
+
+                # Ensure dotnet is in PATH
+                $dotnetDir = "${env:ProgramFiles}\dotnet"
+                if ($env:Path -notlike "*$dotnetDir*") {
+                    $env:Path = "$dotnetDir;$env:Path"
+                    [Environment]::SetEnvironmentVariable("Path", "$dotnetDir;$([Environment]::GetEnvironmentVariable('Path', 'Machine'))", "Machine")
+                }
+            } catch {
+                Write-Err "Failed to install .NET 8 SDK: $_"
                 Write-Info "Download manually: https://dotnet.microsoft.com/download/dotnet/8.0"
-                Write-Warn "You may need to restart your terminal after installing."
+                exit 1
+            } finally {
+                Remove-Item $dotnetInstallScript -Force -ErrorAction SilentlyContinue
+            }
+
+            if (-not (Test-Command "dotnet")) {
+                Write-Err ".NET 8 SDK installed but not found in PATH. Restart your terminal and try again."
                 exit 1
             }
             Write-Ok ".NET 8 SDK installed"
