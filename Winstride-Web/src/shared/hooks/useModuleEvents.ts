@@ -1,9 +1,10 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchEventsPaged, type PagedResponse } from '../../api/client';
 import type { WinEvent } from '../../modules/security/shared/types';
 import type { FilterState } from '../../components/filter/filterPrimitives';
 import { resolveTriState } from '../../components/filter/filterPrimitives';
+import { usePollPause } from '../context/PollPauseContext';
 
 const PAGE_SIZE = 2000;
 
@@ -68,11 +69,23 @@ export interface ModuleEventsOptions {
 
 export function useModuleEvents(filters: ServerFilters, options?: ModuleEventsOptions): ModuleEventsResult {
   const enabled = options?.enabled ?? true;
+  const queryClient = useQueryClient();
 
   const odataFilter = useMemo(
     () => buildODataFilter(filters),
     [filters.logName, filters.allEventIds, filters.eventFilters, filters.timeStart, filters.timeEnd],
   );
+
+  // Remove stale cache entries when the query key changes
+  const prevFilter = useRef(odataFilter);
+  useEffect(() => {
+    if (prevFilter.current !== odataFilter) {
+      queryClient.removeQueries({
+        queryKey: ['module-events', filters.logName, prevFilter.current],
+      });
+      prevFilter.current = odataFilter;
+    }
+  }, [queryClient, filters.logName, odataFilter]);
 
   const {
     data,
@@ -103,7 +116,6 @@ export function useModuleEvents(filters: ServerFilters, options?: ModuleEventsOp
       return fetched;
     },
     enabled,
-    refetchInterval: enabled ? 60_000 : false,
     retry: 2,
   });
 
@@ -115,9 +127,76 @@ export function useModuleEvents(filters: ServerFilters, options?: ModuleEventsOp
     }
   }, [enabled, hasNextPage, isFetchingNextPage, fetchNextPage, error]);
 
-  const events = useMemo(
+  // --- Phase 2: Incremental 2s polling (after pagination completes) ---
+  const isComplete = !hasNextPage && !isLoading;
+  const { paused } = usePollPause();
+
+  // Base events from pagination
+  const baseEvents = useMemo(
     () => data?.pages.flatMap((p) => p.events) ?? [],
     [data],
+  );
+
+  // Track newest timestamp from base pagination
+  const baseNewestTs = baseEvents[0]?.timeCreated ?? '';
+
+  // Accumulate polled events in state so the array only grows
+  const [polledEvents, setPolledEvents] = useState<WinEvent[]>([]);
+  const knownIdsRef = useRef(new Set<number>());
+
+  // Rebuild known IDs when base pagination data changes
+  useEffect(() => {
+    const ids = new Set<number>();
+    for (const e of baseEvents) ids.add(e.id);
+    for (const e of polledEvents) ids.add(e.id);
+    knownIdsRef.current = ids;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseEvents]); // Intentionally omit polledEvents — only rebuild on base data change
+
+  // Newest timestamp across both sources (polled events are prepended, so [0] is newest)
+  const newestTsRef = useRef('');
+  useEffect(() => {
+    newestTsRef.current = polledEvents[0]?.timeCreated ?? baseNewestTs;
+  }, [polledEvents, baseNewestTs]);
+
+  // Reset polled events when filters change
+  useEffect(() => {
+    setPolledEvents([]);
+  }, [odataFilter]);
+
+  const pollQuery = useQuery<PagedResponse>({
+    queryKey: ['module-events-poll', filters.logName, odataFilter],
+    queryFn: () => {
+      const ts = newestTsRef.current;
+      if (!ts) return { events: [], totalCount: null };
+      const iso = new Date(ts).toISOString().replace('Z', '+00:00');
+      const pollFilter = `${odataFilter} and timeCreated gt ${iso}`;
+      return fetchEventsPaged({
+        $filter: pollFilter,
+        $select: 'id,eventId,level,machineName,timeCreated,eventData',
+        $orderby: 'timeCreated desc',
+        $top: '500',
+      });
+    },
+    enabled: isComplete && enabled && !paused && !!baseNewestTs,
+    refetchInterval: 2_000,
+    retry: 1,
+  });
+
+  // Merge poll results into accumulated polled events
+  useEffect(() => {
+    const fresh = pollQuery.data?.events;
+    if (!fresh || fresh.length === 0) return;
+    const newOnes = fresh.filter((e) => !knownIdsRef.current.has(e.id));
+    if (newOnes.length === 0) return;
+    for (const e of newOnes) knownIdsRef.current.add(e.id);
+    setPolledEvents((prev) => [...newOnes, ...prev]);
+  }, [pollQuery.data]);
+
+  // Final merged array — polled events prepended, array only grows
+  const events = useMemo(
+    () => (polledEvents.length > 0 ? [...polledEvents, ...baseEvents] : baseEvents),
+    [polledEvents, baseEvents],
   );
 
   const totalCount = data?.pages[0]?.totalCount ?? null;
@@ -126,12 +205,12 @@ export function useModuleEvents(filters: ServerFilters, options?: ModuleEventsOp
     events,
     isLoading,
     isFetchingMore: isFetchingNextPage,
-    isComplete: !hasNextPage && !isLoading,
+    isComplete,
     totalCount,
     loadedCount: events.length,
     error: error as Error | null,
     refetch,
-    isFetching,
+    isFetching: isFetching || pollQuery.isFetching,
     failureCount,
   };
 }
