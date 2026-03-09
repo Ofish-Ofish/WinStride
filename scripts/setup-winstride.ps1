@@ -1,7 +1,7 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Sets up the WinStride environment from scratch — installs prerequisites,
+    Sets up the WinStride environment from scratch -installs prerequisites,
     configures PostgreSQL, builds the API, Agent, and Web frontend.
     Run this before setup-certs.ps1.
 
@@ -169,9 +169,9 @@ function Invoke-Psql {
 # ── Banner ───────────────────────────────────────────────────────────────────
 
 Write-Host ""
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host "  WinStride Setup" -ForegroundColor White
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Project root: $projectRoot" -ForegroundColor Gray
 
@@ -573,9 +573,9 @@ try {
 # ── Summary ──────────────────────────────────────────────────────────────────
 
 Write-Host "`n" -NoNewline
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host "  WINSTRIDE SETUP COMPLETE" -ForegroundColor Green
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Database" -ForegroundColor White
 Write-Host "    Host     : localhost:$DbPort" -ForegroundColor Gray
@@ -598,4 +598,4 @@ Write-Host "    4. Start the Agent (as Administrator):" -ForegroundColor Yellow
 Write-Host "       cd WinStride-Agent\WinStride-Agent" -ForegroundColor White
 Write-Host "       dotnet run" -ForegroundColor White
 Write-Host ""
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan

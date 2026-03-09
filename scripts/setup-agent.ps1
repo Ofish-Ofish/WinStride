@@ -115,7 +115,7 @@ try {
     $testThumbprint = $testCert.Thumbprint
     $testSubject = $testCert.Subject
     $testCert.Dispose()
-    Write-Ok "PFX is valid — Subject: $testSubject"
+    Write-Ok "PFX is valid -Subject: $testSubject"
 } catch {
     Write-Err "Failed to read PFX file. Wrong password or corrupted file."
     Write-Err "Details: $_"
@@ -126,7 +126,7 @@ try {
 $existing = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Thumbprint -eq $testThumbprint }
 if ($existing) {
     Write-Warn "Certificate already exists in store (Thumbprint: $testThumbprint)"
-    Write-Ok "Skipping import — using existing certificate"
+    Write-Ok "Skipping import -using existing certificate"
     $importedCert = $existing | Select-Object -First 1
 } else {
     try {
@@ -161,10 +161,10 @@ if ($ekuExtension) {
     if ($hasClientAuth) {
         Write-Ok "Certificate has Client Authentication EKU"
     } else {
-        Write-Warn "Certificate does NOT have Client Authentication EKU — the server may reject it"
+        Write-Warn "Certificate does NOT have Client Authentication EKU -the server may reject it"
     }
 } else {
-    Write-Warn "No Enhanced Key Usage extension found — the server may reject it"
+    Write-Warn "No Enhanced Key Usage extension found -the server may reject it"
 }
 
 # ── Update agent config ─────────────────────────────────────────────────────
@@ -235,15 +235,15 @@ try {
     }
 } catch {
     Write-Warn "Could not test connectivity: $_"
-    Write-Warn "This is not critical — the agent will retry on startup"
+    Write-Warn "This is not critical -the agent will retry on startup"
 }
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 
 Write-Host "`n" -NoNewline
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host "  AGENT SETUP COMPLETE" -ForegroundColor Green
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Certificate subject    : $($importedCert.Subject)" -ForegroundColor White
 Write-Host "  Certificate thumbprint : $($importedCert.Thumbprint)" -ForegroundColor White
@@ -257,4 +257,4 @@ Write-Host ""
 Write-Host "  The agent is ready to connect to the server." -ForegroundColor Green
 Write-Host "  Start the agent service to begin sending data." -ForegroundColor Green
 Write-Host ""
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan

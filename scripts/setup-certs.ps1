@@ -383,9 +383,9 @@ if (Test-Path $agentConfigPath) {
 # ── Summary ──────────────────────────────────────────────────────────────────
 
 Write-Host "`n" -NoNewline
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host "  SETUP COMPLETE" -ForegroundColor Green
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Server cert thumbprint : $($serverCert.Thumbprint)" -ForegroundColor White
 Write-Host "  Client cert thumbprint : $($clientCert.Thumbprint)" -ForegroundColor White
@@ -397,4 +397,4 @@ Write-Host "    1. Copy '$pfxPath' and 'setup-agent.ps1' to each agent machine" 
 Write-Host "    2. Run: .\setup-agent.ps1 -PfxPath '$ClientName.pfx' -ServerIP '<this-machine-ip>'" -ForegroundColor Yellow
 Write-Host "    3. Delete the password file after distribution" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
