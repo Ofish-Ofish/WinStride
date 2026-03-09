@@ -6,6 +6,7 @@ import type { ColumnDef } from '../../../shared/listUtils';
 import { applySearch, relativeTime } from '../../../shared/listUtils';
 import VirtualizedEventList from '../../../components/list/VirtualizedEventList';
 import { COLUMNS, heartbeatsJsonMapper } from './heartbeatsColumns';
+import { usePollPause } from '../../../shared/context/PollPauseContext';
 
 function StatusBadge({ alive, lastSeen }: { alive: boolean; lastSeen: string }) {
   const stale = Date.now() - new Date(lastSeen).getTime() > 5 * 60_000;
@@ -66,10 +67,12 @@ export default function HeartbeatsList({ visible }: { visible: boolean }) {
     return () => clearTimeout(t);
   }, [search]);
 
+  const { paused } = usePollPause();
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['heartbeats'],
     queryFn: () => fetchHeartbeats(),
-    enabled: visible,
+    enabled: visible && !paused,
     refetchInterval: 15_000,
     retry: 2,
     structuralSharing: false,

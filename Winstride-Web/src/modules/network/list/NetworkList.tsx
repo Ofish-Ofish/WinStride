@@ -14,6 +14,7 @@ import NetworkFilterPanel from '../NetworkFilterPanel';
 import { useSeverityIntegration } from '../../../shared/detection/engine';
 import { renderSeverityCell } from '../../../shared/detection/SeverityBadge';
 import type { WinEvent } from '../../security/shared/types';
+import { usePollPause } from '../../../shared/context/PollPauseContext';
 
 const STATE_STYLES: Record<string, string> = {
   'Established': 'bg-[#3fb950]/20 text-[#56d364]',
@@ -133,6 +134,8 @@ export default function NetworkList({ visible }: { visible: boolean }) {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
+  const { paused } = usePollPause();
+
   useEffect(() => { saveNetworkFilters(filters); }, [filters]);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 200);
@@ -143,8 +146,8 @@ export default function NetworkList({ visible }: { visible: boolean }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['network-connections'],
     queryFn: () => fetchNetworkConnections(),
-    enabled: visible,
-    refetchInterval: 30_000,
+    enabled: visible && !paused,
+    refetchInterval: 2_000,
     retry: 2,
     structuralSharing: false,
   });

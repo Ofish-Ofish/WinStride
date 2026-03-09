@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchProcesses } from '../../api/client';
 import { ToolbarButton } from '../../components/list/VirtualizedEventList';
 import ProcessTree from './ProcessTree';
+import { usePollPause } from '../../shared/context/PollPauseContext';
 
 function RefreshIcon({ spinning }: { spinning: boolean }) {
   return (
@@ -14,11 +15,13 @@ function RefreshIcon({ spinning }: { spinning: boolean }) {
 
 export default function ProcessDashboard() {
   const [selectedMachine, setSelectedMachine] = useState<string>('');
+  const { paused } = usePollPause();
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['processes'],
     queryFn: () => fetchProcesses(),
-    refetchInterval: 30_000,
+    enabled: !paused,
+    refetchInterval: 2_000,
     retry: 2,
     structuralSharing: false,
   });

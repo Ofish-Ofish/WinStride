@@ -13,6 +13,7 @@ import AutorunsDetailRow from './AutorunsDetailRow';
 import { useSeverityIntegration } from '../../../shared/detection/engine';
 import { renderSeverityCell } from '../../../shared/detection/SeverityBadge';
 import type { WinEvent } from '../../security/shared/types';
+import { usePollPause } from '../../../shared/context/PollPauseContext';
 
 const CATEGORY_STYLES: Record<string, string> = {
   'Logon':           'bg-[#58a6ff]/15 text-[#79c0ff]',
@@ -108,11 +109,13 @@ export default function AutorunsList({ visible }: { visible: boolean }) {
     return () => clearTimeout(t);
   }, [search]);
 
+  const { paused } = usePollPause();
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['autoruns'],
     queryFn: () => fetchAutoruns(),
-    enabled: visible,
-    refetchInterval: 60_000,
+    enabled: visible && !paused,
+    refetchInterval: 2_000,
     retry: 2,
     structuralSharing: false,
   });
