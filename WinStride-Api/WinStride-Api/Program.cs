@@ -12,11 +12,27 @@ using WinStrideApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var serverCertThumbprint = builder.Configuration["ServerCertThumbprint"];
+
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.ConfigureHttpsDefaults(httpsOptions =>
+    options.ListenAnyIP(7097, listenOptions =>
     {
-        httpsOptions.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
+        listenOptions.UseHttps(httpsOptions =>
+        {
+            if (!string.IsNullOrWhiteSpace(serverCertThumbprint))
+            {
+                using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+                store.Open(OpenFlags.ReadOnly);
+                var certs = store.Certificates.Find(
+                    X509FindType.FindByThumbprint, serverCertThumbprint, false);
+
+                if (certs.Count > 0)
+                    httpsOptions.ServerCertificate = certs[0];
+            }
+
+            httpsOptions.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
+        });
     });
 });
 
