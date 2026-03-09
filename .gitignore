@@ -39,6 +39,11 @@ msbuild.wrn
 docs/
 Winstride-Web/docs/
 
+# SQLite database files
+*.db
+*.db-shm
+*.db-wal
+
 # Screenshots
 *.png
 

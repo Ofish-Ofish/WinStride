@@ -375,6 +375,18 @@ if (Test-Path $agentConfigPath) {
         Write-Err "Failed to update agent config: $_"
         Write-Warn "Manually set certSubject to: $($clientCert.Thumbprint)"
     }
+
+    # Update baseUrl to use HTTPS with the server's address
+    try {
+        $serverAddr = $ServerDnsNames | Where-Object { $_ -ne "localhost" -and $_ -ne "127.0.0.1" } | Select-Object -First 1
+        if (-not $serverAddr) { $serverAddr = "localhost" }
+        $tlsBaseUrl = "https://${serverAddr}:7097/api/Event"
+        Update-YamlValue -FilePath $agentConfigPath -Key "baseUrl" -Value $tlsBaseUrl
+        Write-Ok "Updated baseUrl to: $tlsBaseUrl"
+    } catch {
+        Write-Err "Failed to update baseUrl: $_"
+        Write-Warn "Manually set baseUrl to: https://<server>:7097/api/Event"
+    }
 } else {
     Write-Warn "Agent config not found at: $agentConfigPath"
     Write-Warn "Manually set certSubject to: $($clientCert.Thumbprint)"

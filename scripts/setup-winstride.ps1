@@ -91,13 +91,14 @@ function Install-Prerequisite {
 
     try {
         if ($FileName -match '\.msi$') {
-            $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$installerPath`" $InstallerArgs" -Wait -PassThru -ErrorAction Stop
+            # Use cmd /c msiexec to avoid hanging on background MSI service processes
+            $exitCode = (Start-Process -FilePath "cmd.exe" -ArgumentList "/c msiexec /i `"$installerPath`" $InstallerArgs" -Wait -PassThru -ErrorAction Stop).ExitCode
         } else {
-            $process = Start-Process -FilePath $installerPath -ArgumentList $InstallerArgs -Wait -PassThru -ErrorAction Stop
+            $exitCode = (Start-Process -FilePath $installerPath -ArgumentList $InstallerArgs -Wait -PassThru -ErrorAction Stop).ExitCode
         }
 
-        if ($process.ExitCode -ne 0) {
-            Write-Err "$Name installer exited with code $($process.ExitCode)"
+        if ($exitCode -ne 0) {
+            Write-Err "$Name installer exited with code $exitCode"
             return $false
         }
 
@@ -241,76 +242,6 @@ if (-not $SkipPrerequisiteCheck) {
     Write-Warn "Skipping prerequisite checks (-SkipPrerequisiteCheck)"
 }
 
-# -- Build API --
-
-Write-Step "Building WinStride API"
-
-try {
-    Write-Info "Restoring packages..."
-    $restoreResult = & dotnet restore $apiCsproj 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed: $restoreResult" }
-    Write-Ok "Packages restored"
-
-    Write-Info "Building..."
-    $buildResult = & dotnet build $apiCsproj --no-restore -c Release 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "dotnet build failed: $buildResult" }
-    Write-Ok "API built successfully"
-} catch {
-    Write-Err "API build failed: $_"
-    exit 1
-}
-
-Write-Ok "Database: SQLite (winstride.db) - created automatically on first run"
-
-# -- Build Agent --
-
-Write-Step "Building WinStride Agent"
-
-try {
-    Write-Info "Restoring packages..."
-    $restoreResult = & dotnet restore $agentCsproj 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed: $restoreResult" }
-    Write-Ok "Packages restored"
-
-    Write-Info "Building..."
-    $buildResult = & dotnet build $agentCsproj --no-restore -c Release 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "dotnet build failed: $buildResult" }
-    Write-Ok "Agent built successfully"
-} catch {
-    Write-Err "Agent build failed: $_"
-    exit 1
-}
-
-# -- Setup Web Frontend --
-
-Write-Step "Setting up Web Frontend"
-
-try {
-    Write-Info "Installing npm packages..."
-    Push-Location $webDir
-    $npmResult = & npm install 2>&1
-    Pop-Location
-    if ($LASTEXITCODE -ne 0) { throw "npm install failed: $npmResult" }
-    Write-Ok "npm packages installed"
-} catch {
-    Pop-Location -ErrorAction SilentlyContinue
-    Write-Err "Frontend setup failed: $_"
-    exit 1
-}
-
-try {
-    Write-Info "Building frontend..."
-    Push-Location $webDir
-    $buildResult = & npm run build 2>&1
-    Pop-Location
-    if ($LASTEXITCODE -ne 0) { throw "npm build failed: $buildResult" }
-    Write-Ok "Frontend built successfully"
-} catch {
-    Pop-Location -ErrorAction SilentlyContinue
-    Write-Warn "Frontend build failed (non-critical for setup): $_"
-    Write-Info "You can still run 'npm run dev' for development."
-}
-
 # -- Summary --
 
 Write-Host "`n" -NoNewline
@@ -318,22 +249,15 @@ Write-Host "================================================================" -F
 Write-Host "  WINSTRIDE SETUP COMPLETE" -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Database: SQLite (auto-created at winstride.db on first API run)" -ForegroundColor White
+Write-Host "  Prerequisites installed. Database is SQLite (zero config)." -ForegroundColor White
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Yellow
-Write-Host "    1. Run TLS setup:" -ForegroundColor Yellow
+Write-Host "    1. (Optional) Run TLS setup:" -ForegroundColor Yellow
 Write-Host "       .\scripts\setup-certs.ps1 -CAName `"YourCA`"" -ForegroundColor White
 Write-Host ""
-Write-Host "    2. Start the API:" -ForegroundColor Yellow
-Write-Host "       cd WinStride-Api\WinStride-Api" -ForegroundColor White
-Write-Host "       dotnet run" -ForegroundColor White
+Write-Host "    2. Start everything:" -ForegroundColor Yellow
+Write-Host "       .\scripts\start-winstride.ps1" -ForegroundColor White
 Write-Host ""
-Write-Host "    3. Start the Web UI:" -ForegroundColor Yellow
-Write-Host "       cd Winstride-Web" -ForegroundColor White
-Write-Host "       npm run dev" -ForegroundColor White
-Write-Host ""
-Write-Host "    4. Start the Agent (as Administrator):" -ForegroundColor Yellow
-Write-Host "       cd WinStride-Agent\WinStride-Agent" -ForegroundColor White
-Write-Host "       dotnet run" -ForegroundColor White
+Write-Host "  First start will download packages and build automatically." -ForegroundColor Gray
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Cyan
