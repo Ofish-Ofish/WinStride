@@ -399,13 +399,30 @@ public class LogMonitor
         doc.LoadXml(record.ToXml());
         string jsonFromXml = JsonConvert.SerializeXmlNode(doc);
 
+        int? pid = null;
+
+        if (record.LogName == "Microsoft-Windows-Sysmon/Operational" && record.Id == 1)
+        {
+            // Sysmon Event 1: extract the created process's PID from EventData
+            var ns = new XmlNamespaceManager(doc.NameTable);
+            ns.AddNamespace("e", "http://schemas.microsoft.com/win/2004/08/events/event");
+            var node = doc.SelectSingleNode("//e:EventData/e:Data[@Name='ProcessId']", ns);
+            if (node != null && int.TryParse(node.InnerText, out int sysmonPid))
+                pid = sysmonPid;
+        }
+        else if (record.LogName == "Microsoft-Windows-PowerShell/Operational" && record.Id == 4104)
+        {
+            // PowerShell 4104: record.ProcessId is the PowerShell process PID
+            pid = record.ProcessId;
+        }
+
         return new WinEvent
         {
             EventId = record.Id,
             LogName = record.LogName,
             MachineName = record.MachineName,
             Level = record.LevelDisplayName ?? $"Level {record.Level}",
-            Pid = record.ProcessId,
+            Pid = pid,
             TimeCreated = record.TimeCreated.HasValue
                 ? record.TimeCreated.Value.ToUniversalTime()
                 : DateTime.UtcNow,

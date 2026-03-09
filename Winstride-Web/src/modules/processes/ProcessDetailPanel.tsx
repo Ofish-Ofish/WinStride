@@ -77,36 +77,22 @@ function LinkButton({ to, color, children }: { to: string; color: string; childr
 export default function ProcessDetailPanel({ process, onClose }: Props) {
   const isPowerShell = /^(powershell|pwsh)\.exe$/i.test(process.imageName);
 
-  // Fetch Sysmon Event 1 matching this PID + machine
+  // Fetch Sysmon Event 1 matching this PID + machine (server-side filter)
   const { data: sysmonData, isLoading: sysmonLoading } = useQuery({
-    queryKey: ['process-sysmon', process.machineName, process.pid, process.imageName],
+    queryKey: ['process-sysmon', process.machineName, process.pid],
     queryFn: () => fetchEventsPaged({
-      $filter: `logName eq 'Microsoft-Windows-Sysmon/Operational' and eventId eq 1 and machineName eq '${process.machineName}'`,
+      $filter: `logName eq 'Microsoft-Windows-Sysmon/Operational' and eventId eq 1 and machineName eq '${process.machineName}' and pid eq ${process.pid}`,
       $orderby: 'timeCreated desc',
-      $top: '50',
+      $top: '1',
     }),
     staleTime: 60_000,
   });
 
-  // Find the best matching Sysmon Event 1 for this PID
   const sysmonMatch = useMemo(() => {
-    if (!sysmonData?.events) return null;
-    const snapshotTime = new Date(process.timeSynced).getTime();
-
-    for (const event of sysmonData.events) {
-      const data = getDataArray(event);
-      if (!data) continue;
-      const pid = parseInt(getDataField(data, 'ProcessId') || '0', 10);
-      const imageName = basename(getDataField(data, 'Image'));
-      if (pid === process.pid && imageName.toLowerCase() === process.imageName.toLowerCase()) {
-        const eventTime = new Date(event.timeCreated).getTime();
-        if (eventTime <= snapshotTime) {
-          return { event, parsed: parseSysmonMatch(event) };
-        }
-      }
-    }
-    return null;
-  }, [sysmonData, process]);
+    const event = sysmonData?.events?.[0];
+    if (!event) return null;
+    return { event, parsed: parseSysmonMatch(event) };
+  }, [sysmonData]);
 
   // Fetch PowerShell 4104 events matching this PID via server-side filter
   const { data: psData, isLoading: psLoading } = useQuery({
