@@ -14,12 +14,17 @@ var builder = WebApplication.CreateBuilder(args);
 
 var serverCertThumbprint = builder.Configuration["ServerCertThumbprint"];
 var tlsEnabled = !string.IsNullOrWhiteSpace(serverCertThumbprint);
+var httpPort = builder.Configuration.GetValue("HttpPort", 5090);
+var httpsPort = builder.Configuration.GetValue("HttpsPort", 7097);
+var corsOrigins = builder.Configuration.GetSection("CorsOrigins").Get<string[]>()
+    ?? ["http://localhost:5173"];
 
-if (tlsEnabled)
+builder.WebHost.ConfigureKestrel(options =>
 {
-    builder.WebHost.ConfigureKestrel(options =>
+    if (tlsEnabled)
     {
-        options.ListenAnyIP(7097, listenOptions =>
+        // Secure mode: HTTPS only with mTLS, no HTTP fallback
+        options.ListenAnyIP(httpsPort, listenOptions =>
         {
             listenOptions.UseHttps(httpsOptions =>
             {
@@ -34,8 +39,13 @@ if (tlsEnabled)
                 httpsOptions.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
             });
         });
-    });
-}
+    }
+    else
+    {
+        // Lab/dev mode: HTTP only, no TLS
+        options.ListenAnyIP(httpPort);
+    }
+});
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Data Source=winstride.db";
@@ -101,7 +111,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowReactUI",
         policy =>
         {
-            policy.WithOrigins("http://localhost:5173")
+            policy.WithOrigins(corsOrigins)
                   .AllowAnyHeader()
                   .AllowAnyMethod();
         });
@@ -125,7 +135,6 @@ app.UseCors("AllowReactUI");
 
 if (tlsEnabled)
 {
-    app.UseHttpsRedirection();
     app.UseAuthentication();
 }
 
