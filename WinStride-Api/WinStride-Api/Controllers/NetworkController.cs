@@ -69,7 +69,7 @@ namespace WinStrideApi.Controllers
                     existing.ProcessName = incoming.ProcessName;
                     existing.ModuleName = incoming.ModuleName;
                     existing.BatchId = incoming.BatchId;
-                    existing.TimeCreated = DateTimeOffset.UtcNow; 
+                    existing.TimeCreated = DateTime.UtcNow;
                 }
                 else
                 {

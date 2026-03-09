@@ -407,8 +407,8 @@ public class LogMonitor
             Level = record.LevelDisplayName ?? $"Level {record.Level}",
             Pid = record.ProcessId,
             TimeCreated = record.TimeCreated.HasValue
-                ? new DateTimeOffset(record.TimeCreated.Value.ToUniversalTime())
-                : DateTimeOffset.UtcNow,
+                ? record.TimeCreated.Value.ToUniversalTime()
+                : DateTime.UtcNow,
             EventData = jsonFromXml
         };
     }

@@ -1,42 +1,30 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Sets up the WinStride environment from scratch -installs prerequisites,
-    configures PostgreSQL, builds the API, Agent, and Web frontend.
+    Sets up the WinStride environment from scratch - installs prerequisites,
+    builds the API, Agent, and Web frontend. Database is SQLite (zero config).
     Run this before setup-certs.ps1.
 
-.PARAMETER DbUser
-    PostgreSQL username to create. Defaults to "admin".
-
-.PARAMETER DbPassword
-    PostgreSQL password. Defaults to "123".
-
-.PARAMETER DbName
-    Database name to create. Defaults to "db".
-
-.PARAMETER DbPort
-    PostgreSQL port. Defaults to 5432.
-
 .PARAMETER SkipPrerequisiteCheck
-    Skip checking for .NET SDK, Node.js, and PostgreSQL.
+    Skip checking for .NET SDK and Node.js.
+
+.PARAMETER Auto
+    Automatically install missing prerequisites without prompting.
 
 .EXAMPLE
     .\setup-winstride.ps1
-    .\setup-winstride.ps1 -DbUser "myuser" -DbPassword "securepass" -DbName "winstride"
+    .\setup-winstride.ps1 -Auto
 #>
 
 param(
-    [string]$DbUser = "admin",
-    [string]$DbPassword = "123",
-    [string]$DbName = "db",
-    [int]$DbPort = 5432,
-    [switch]$SkipPrerequisiteCheck
+    [switch]$SkipPrerequisiteCheck,
+    [switch]$Auto
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Paths ────────────────────────────────────────────────────────────────────
+# -- Paths --
 
 $projectRoot    = Split-Path $PSScriptRoot -Parent
 $apiDir         = Join-Path $projectRoot "WinStride-Api\WinStride-Api"
@@ -44,9 +32,8 @@ $agentDir       = Join-Path $projectRoot "WinStride-Agent\WinStride-Agent"
 $webDir         = Join-Path $projectRoot "Winstride-Web"
 $apiCsproj      = Join-Path $apiDir "WinStride-Api.csproj"
 $agentCsproj    = Join-Path $agentDir "WinStride-Agent.csproj"
-$appSettingsPath = Join-Path $apiDir "appsettings.json"
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# -- Helpers --
 
 function Write-Step   { param([string]$msg) Write-Host "`n[*] $msg" -ForegroundColor Cyan }
 function Write-Ok     { param([string]$msg) Write-Host "    [OK] $msg" -ForegroundColor Green }
@@ -59,34 +46,9 @@ function Test-Command {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
-function Find-Psql {
-    # Try PATH first
-    if (Test-Command "psql") {
-        return (Get-Command "psql").Source
-    }
-
-    # Search common PostgreSQL install paths
-    $searchPaths = @(
-        "${env:ProgramFiles}\PostgreSQL",
-        "${env:ProgramFiles(x86)}\PostgreSQL",
-        "C:\PostgreSQL"
-    )
-
-    foreach ($basePath in $searchPaths) {
-        if (Test-Path $basePath) {
-            $psqlCandidates = Get-ChildItem -Path $basePath -Recurse -Filter "psql.exe" -ErrorAction SilentlyContinue |
-                Sort-Object { [version]($_.Directory.Parent.Name) } -Descending -ErrorAction SilentlyContinue
-            if ($psqlCandidates) {
-                return $psqlCandidates[0].FullName
-            }
-        }
-    }
-
-    return $null
-}
-
 function Request-UserConsent {
     param([string]$Prompt)
+    if ($Auto) { return $true }
     $response = Read-Host "$Prompt [Y/N]"
     return $response -match '^[Yy]'
 }
@@ -109,8 +71,11 @@ function Install-Prerequisite {
     Write-Info "Downloading $Name..."
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $oldProgress = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
         Invoke-WebRequest -Uri $InstallerUrl -OutFile $installerPath -UseBasicParsing -ErrorAction Stop
+        $ProgressPreference = $oldProgress
     } catch {
+        $ProgressPreference = $oldProgress
         Write-Err "Failed to download $Name from: $InstallerUrl"
         Write-Err "Error: $_"
         return $false
@@ -152,21 +117,7 @@ function Install-Prerequisite {
     return $true
 }
 
-function Invoke-Psql {
-    param(
-        [string]$PsqlPath,
-        [string]$Command,
-        [string]$Database = "postgres",
-        [string]$Username = "postgres"
-    )
-
-    $env:PGPASSWORD = $null  # Use peer/trust auth for local postgres user initially
-
-    $result = & $PsqlPath -h localhost -p $DbPort -U $Username -d $Database -t -A -c $Command 2>&1
-    return $result
-}
-
-# ── Banner ───────────────────────────────────────────────────────────────────
+# -- Banner --
 
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Cyan
@@ -175,7 +126,7 @@ Write-Host "================================================================" -F
 Write-Host ""
 Write-Host "  Project root: $projectRoot" -ForegroundColor Gray
 
-# ── Validate project structure ───────────────────────────────────────────────
+# -- Validate project structure --
 
 Write-Step "Validating project structure"
 
@@ -202,12 +153,12 @@ if (-not $structureValid) {
     exit 1
 }
 
-# ── Check prerequisites ─────────────────────────────────────────────────────
+# -- Check prerequisites --
 
 if (-not $SkipPrerequisiteCheck) {
     Write-Step "Checking prerequisites"
 
-    # ── .NET 8 SDK ───────────────────────────────────────────────────────
+    # -- .NET 8 SDK --
     $dotnetOk = $false
     if (Test-Command "dotnet") {
         $dotnetVersions = & dotnet --list-sdks 2>&1
@@ -222,32 +173,16 @@ if (-not $SkipPrerequisiteCheck) {
     if (-not $dotnetOk) {
         Write-Warn ".NET 8 SDK not found."
         if (Request-UserConsent "    Install .NET 8 SDK automatically?") {
-            Write-Info "Downloading official dotnet-install script..."
-            $dotnetInstallScript = Join-Path $env:TEMP "dotnet-install.ps1"
-            try {
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                Invoke-WebRequest -Uri "https://dot.net/v1/dotnet-install.ps1" -OutFile $dotnetInstallScript -UseBasicParsing -ErrorAction Stop
-                Write-Ok "Install script downloaded"
+            $installed = Install-Prerequisite `
+                -Name ".NET 8 SDK" `
+                -InstallerUrl "https://aka.ms/dotnet/8.0/dotnet-sdk-win-x64.exe" `
+                -InstallerArgs "/install /quiet /norestart" `
+                -FileName "dotnet-sdk-8.0-win-x64.exe"
 
-                Write-Info "Installing .NET 8 SDK (this may take a few minutes)..."
-                & $dotnetInstallScript -Channel 8.0 -InstallDir "${env:ProgramFiles}\dotnet" -ErrorAction Stop
-
-                # Ensure dotnet is in PATH
-                $dotnetDir = "${env:ProgramFiles}\dotnet"
-                if ($env:Path -notlike "*$dotnetDir*") {
-                    $env:Path = "$dotnetDir;$env:Path"
-                    [Environment]::SetEnvironmentVariable("Path", "$dotnetDir;$([Environment]::GetEnvironmentVariable('Path', 'Machine'))", "Machine")
-                }
-            } catch {
-                Write-Err "Failed to install .NET 8 SDK: $_"
+            if (-not $installed -or -not (Test-Command "dotnet")) {
+                Write-Err ".NET 8 SDK installation failed or not in PATH."
                 Write-Info "Download manually: https://dotnet.microsoft.com/download/dotnet/8.0"
-                exit 1
-            } finally {
-                Remove-Item $dotnetInstallScript -Force -ErrorAction SilentlyContinue
-            }
-
-            if (-not (Test-Command "dotnet")) {
-                Write-Err ".NET 8 SDK installed but not found in PATH. Restart your terminal and try again."
+                Write-Warn "You may need to restart your terminal after installing."
                 exit 1
             }
             Write-Ok ".NET 8 SDK installed"
@@ -257,7 +192,7 @@ if (-not $SkipPrerequisiteCheck) {
         }
     }
 
-    # ── Node.js ──────────────────────────────────────────────────────────
+    # -- Node.js --
     $nodeOk = $false
     if (Test-Command "node") {
         $nodeVersion = & node --version 2>&1
@@ -302,189 +237,11 @@ if (-not $SkipPrerequisiteCheck) {
         Write-Err "npm not found (should come with Node.js). Restart your terminal and try again."
         exit 1
     }
-
-    # ── PostgreSQL ───────────────────────────────────────────────────────
-    $psqlPath = Find-Psql
-    if ($psqlPath) {
-        $pgVersion = & $psqlPath --version 2>&1
-        Write-Ok "PostgreSQL client: $pgVersion"
-        Write-Info "psql path: $psqlPath"
-    } else {
-        Write-Warn "PostgreSQL not found."
-        if (Request-UserConsent "    Install PostgreSQL 16 automatically?") {
-            $pgUrl = "https://get.enterprisedb.com/postgresql/postgresql-16.8-1-windows-x64.exe"
-            Write-Warn "The PostgreSQL installer will open interactively."
-            Write-Warn "Use the defaults, and remember the superuser password you set."
-
-            $installed = Install-Prerequisite `
-                -Name "PostgreSQL 16" `
-                -InstallerUrl $pgUrl `
-                -InstallerArgs "--mode qt --superpassword `"postgres`" --serverport $DbPort" `
-                -FileName "postgresql-16-win-x64.exe"
-
-            $psqlPath = Find-Psql
-            if (-not $installed -or -not $psqlPath) {
-                Write-Err "PostgreSQL installation failed or psql not found."
-                Write-Info "Download manually: https://www.postgresql.org/download/windows/"
-                Write-Warn "You may need to restart your terminal after installing."
-                exit 1
-            }
-            Write-Ok "PostgreSQL installed"
-        } else {
-            Write-Info "Download manually: https://www.postgresql.org/download/windows/"
-            exit 1
-        }
-    }
-
-    # Check PostgreSQL server is running
-    $pgRunning = $false
-    try {
-        $pgTest = & $psqlPath -h localhost -p $DbPort -U postgres -c "SELECT 1;" 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Ok "PostgreSQL server is running on port $DbPort"
-            $pgRunning = $true
-        }
-    } catch { }
-
-    if (-not $pgRunning) {
-        Write-Warn "PostgreSQL server is not responding on port $DbPort"
-        Write-Info "Attempting to start the PostgreSQL service..."
-
-        # Try common service names
-        $serviceNames = @("postgresql-x64-16", "postgresql-x64-15", "postgresql-x64-14", "postgresql")
-        $started = $false
-        foreach ($svcName in $serviceNames) {
-            $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
-            if ($svc) {
-                if ($svc.Status -ne "Running") {
-                    try {
-                        Start-Service -Name $svcName -ErrorAction Stop
-                        Start-Sleep -Seconds 3
-                        Write-Ok "Started service: $svcName"
-                        $started = $true
-                    } catch {
-                        Write-Warn "Could not start service $svcName : $_"
-                    }
-                } else {
-                    Write-Ok "Service $svcName is already running"
-                    $started = $true
-                }
-                break
-            }
-        }
-
-        if (-not $started) {
-            Write-Err "Could not find or start the PostgreSQL service."
-            Write-Info "Start it manually via services.msc or: net start postgresql-x64-16"
-            exit 1
-        }
-
-        # Verify again after starting
-        try {
-            $pgTest = & $psqlPath -h localhost -p $DbPort -U postgres -c "SELECT 1;" 2>&1
-            if ($LASTEXITCODE -ne 0) { throw "still not responding" }
-            Write-Ok "PostgreSQL server is now running on port $DbPort"
-        } catch {
-            Write-Err "PostgreSQL service started but server is not responding."
-            Write-Info "Check pg_hba.conf and postgresql.conf for port/auth settings."
-            exit 1
-        }
-    }
 } else {
     Write-Warn "Skipping prerequisite checks (-SkipPrerequisiteCheck)"
-    $psqlPath = Find-Psql
-    if (-not $psqlPath) {
-        Write-Err "psql is required even with -SkipPrerequisiteCheck. Cannot find it."
-        exit 1
-    }
 }
 
-# ── Setup PostgreSQL database ────────────────────────────────────────────────
-
-Write-Step "Setting up PostgreSQL database"
-
-# Check if user already exists
-$env:PGPASSWORD = $null
-$userExists = Invoke-Psql -PsqlPath $psqlPath -Command "SELECT 1 FROM pg_roles WHERE rolname = '$DbUser';"
-if ($userExists -match "1") {
-    Write-Ok "User '$DbUser' already exists"
-} else {
-    Write-Info "Creating user '$DbUser'..."
-    $createUser = Invoke-Psql -PsqlPath $psqlPath -Command "CREATE USER `"$DbUser`" WITH PASSWORD '$DbPassword' CREATEDB;"
-    if ($LASTEXITCODE -eq 0) {
-        Write-Ok "User '$DbUser' created"
-    } else {
-        Write-Err "Failed to create user: $createUser"
-        exit 1
-    }
-}
-
-# Check if database already exists
-$dbExists = Invoke-Psql -PsqlPath $psqlPath -Command "SELECT 1 FROM pg_database WHERE datname = '$DbName';"
-if ($dbExists -match "1") {
-    Write-Ok "Database '$DbName' already exists"
-} else {
-    Write-Info "Creating database '$DbName'..."
-    $createDb = Invoke-Psql -PsqlPath $psqlPath -Command "CREATE DATABASE `"$DbName`" OWNER `"$DbUser`";"
-    if ($LASTEXITCODE -eq 0) {
-        Write-Ok "Database '$DbName' created"
-    } else {
-        Write-Err "Failed to create database: $createDb"
-        exit 1
-    }
-}
-
-# Grant privileges
-$grant = Invoke-Psql -PsqlPath $psqlPath -Command "GRANT ALL PRIVILEGES ON DATABASE `"$DbName`" TO `"$DbUser`";"
-if ($LASTEXITCODE -eq 0) {
-    Write-Ok "Privileges granted to '$DbUser' on '$DbName'"
-}
-
-# Verify connection with the new user
-$env:PGPASSWORD = $DbPassword
-$connTest = & $psqlPath -h localhost -p $DbPort -U $DbUser -d $DbName -c "SELECT 1;" 2>&1
-$env:PGPASSWORD = $null
-if ($LASTEXITCODE -eq 0) {
-    Write-Ok "Verified: can connect as '$DbUser' to '$DbName'"
-} else {
-    Write-Err "Cannot connect as '$DbUser' to '$DbName': $connTest"
-    Write-Warn "You may need to update pg_hba.conf to allow password authentication."
-    Write-Info "Typical location: C:\Program Files\PostgreSQL\<version>\data\pg_hba.conf"
-    Write-Info "Change 'scram-sha-256' or 'md5' for local connections, then restart PostgreSQL."
-    exit 1
-}
-
-# ── Update appsettings.json with connection string ───────────────────────────
-
-Write-Step "Updating API configuration"
-
-$connectionString = "Host=localhost;Port=$DbPort;Database=$DbName;Username=$DbUser;Password=$DbPassword"
-
-if (Test-Path $appSettingsPath) {
-    try {
-        $appSettings = Get-Content $appSettingsPath -Raw | ConvertFrom-Json
-
-        # Add or update ConnectionStrings section
-        if (-not $appSettings.PSObject.Properties['ConnectionStrings']) {
-            $appSettings | Add-Member -NotePropertyName "ConnectionStrings" -NotePropertyValue ([PSCustomObject]@{
-                DefaultConnection = $connectionString
-            })
-        } else {
-            $appSettings.ConnectionStrings.DefaultConnection = $connectionString
-        }
-
-        $appSettings | ConvertTo-Json -Depth 10 | Set-Content $appSettingsPath -Encoding UTF8
-        Write-Ok "Connection string written to appsettings.json"
-    } catch {
-        Write-Err "Failed to update appsettings.json: $_"
-        Write-Warn "Manually add ConnectionStrings.DefaultConnection: $connectionString"
-    }
-} else {
-    Write-Err "appsettings.json not found at: $appSettingsPath"
-    exit 1
-}
-
-# ── Build API ────────────────────────────────────────────────────────────────
+# -- Build API --
 
 Write-Step "Building WinStride API"
 
@@ -503,40 +260,9 @@ try {
     exit 1
 }
 
-# ── Run EF Core migrations ──────────────────────────────────────────────────
+Write-Ok "Database: SQLite (winstride.db) - created automatically on first run"
 
-Write-Step "Running database migrations"
-
-# Check if dotnet-ef tool is installed
-$efInstalled = & dotnet tool list --global 2>&1 | Select-String "dotnet-ef"
-if (-not $efInstalled) {
-    Write-Info "Installing dotnet-ef tool..."
-    $installResult = & dotnet tool install --global dotnet-ef 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        # May already be installed locally or partially
-        Write-Warn "Could not install dotnet-ef globally: $installResult"
-        Write-Info "Trying to update instead..."
-        & dotnet tool update --global dotnet-ef 2>&1 | Out-Null
-    }
-    Write-Ok "dotnet-ef tool ready"
-} else {
-    Write-Ok "dotnet-ef tool already installed"
-}
-
-try {
-    Write-Info "Applying migrations..."
-    Push-Location $apiDir
-    $migrateResult = & dotnet ef database update 2>&1
-    Pop-Location
-    if ($LASTEXITCODE -ne 0) { throw "Migration failed: $migrateResult" }
-    Write-Ok "Database migrations applied"
-} catch {
-    Pop-Location -ErrorAction SilentlyContinue
-    Write-Err "Migration failed: $_"
-    Write-Warn "The API will attempt to run migrations on startup as a fallback."
-}
-
-# ── Build Agent ──────────────────────────────────────────────────────────────
+# -- Build Agent --
 
 Write-Step "Building WinStride Agent"
 
@@ -555,7 +281,7 @@ try {
     exit 1
 }
 
-# ── Setup Web Frontend ──────────────────────────────────────────────────────
+# -- Setup Web Frontend --
 
 Write-Step "Setting up Web Frontend"
 
@@ -585,17 +311,14 @@ try {
     Write-Info "You can still run 'npm run dev' for development."
 }
 
-# ── Summary ──────────────────────────────────────────────────────────────────
+# -- Summary --
 
 Write-Host "`n" -NoNewline
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host "  WINSTRIDE SETUP COMPLETE" -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Database" -ForegroundColor White
-Write-Host "    Host     : localhost:$DbPort" -ForegroundColor Gray
-Write-Host "    Database : $DbName" -ForegroundColor Gray
-Write-Host "    User     : $DbUser" -ForegroundColor Gray
+Write-Host "  Database: SQLite (auto-created at winstride.db on first API run)" -ForegroundColor White
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Yellow
 Write-Host "    1. Run TLS setup:" -ForegroundColor Yellow

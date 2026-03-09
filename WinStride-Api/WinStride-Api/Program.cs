@@ -13,32 +13,34 @@ using WinStrideApi.Models;
 var builder = WebApplication.CreateBuilder(args);
 
 var serverCertThumbprint = builder.Configuration["ServerCertThumbprint"];
+var tlsEnabled = !string.IsNullOrWhiteSpace(serverCertThumbprint);
 
-builder.WebHost.ConfigureKestrel(options =>
+if (tlsEnabled)
 {
-    options.ListenAnyIP(7097, listenOptions =>
+    builder.WebHost.ConfigureKestrel(options =>
     {
-        listenOptions.UseHttps(httpsOptions =>
+        options.ListenAnyIP(7097, listenOptions =>
         {
-            if (!string.IsNullOrWhiteSpace(serverCertThumbprint))
+            listenOptions.UseHttps(httpsOptions =>
             {
                 using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
                 store.Open(OpenFlags.ReadOnly);
                 var certs = store.Certificates.Find(
-                    X509FindType.FindByThumbprint, serverCertThumbprint, false);
+                    X509FindType.FindByThumbprint, serverCertThumbprint!, false);
 
                 if (certs.Count > 0)
                     httpsOptions.ServerCertificate = certs[0];
-            }
 
-            httpsOptions.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
+                httpsOptions.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
+            });
         });
     });
-});
+}
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? "Data Source=winstride.db";
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseSqlite(connectionString));
 
 var modelBuilder = new ODataConventionModelBuilder();
 modelBuilder.EnableLowerCamelCase();
@@ -49,27 +51,39 @@ modelBuilder.EntitySet<TCPView>("NetworkConnections");
 modelBuilder.EntitySet<AutorunView>("Autoruns");
 modelBuilder.EntitySet<WinProcess>("WinProcesses");
 
-builder.Services.AddAuthentication(CertificateAuthenticationDefaults.AuthenticationScheme)
-    .AddCertificate(options =>
-    {
-        options.AllowedCertificateTypes = CertificateTypes.All;
-
-        options.Events = new CertificateAuthenticationEvents
+if (tlsEnabled)
+{
+    builder.Services.AddAuthentication(CertificateAuthenticationDefaults.AuthenticationScheme)
+        .AddCertificate(options =>
         {
-            OnCertificateValidated = context =>
-            {
-                context.Success();
-                return Task.CompletedTask;
-            },
-            OnAuthenticationFailed = context =>
-            {
-                context.Fail("Certificate failed validation or was not provided.");
-                return Task.CompletedTask;
-            }
-        };
-    });
+            options.AllowedCertificateTypes = CertificateTypes.All;
 
-builder.Services.AddAuthorization();
+            options.Events = new CertificateAuthenticationEvents
+            {
+                OnCertificateValidated = context =>
+                {
+                    context.Success();
+                    return Task.CompletedTask;
+                },
+                OnAuthenticationFailed = context =>
+                {
+                    context.Fail("Certificate failed validation or was not provided.");
+                    return Task.CompletedTask;
+                }
+            };
+        });
+    builder.Services.AddAuthorization();
+}
+else
+{
+    builder.Services.AddAuthorization(options =>
+    {
+        options.FallbackPolicy = null;
+        options.DefaultPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+            .RequireAssertion(_ => true)
+            .Build();
+    });
+}
 
 builder.Services.AddControllers().AddNewtonsoftJson().AddOData(options =>
     options.Select().Filter().OrderBy().Count().SetMaxTop(5000).AddRouteComponents(
@@ -95,6 +109,12 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    db.Database.EnsureCreated();
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -103,9 +123,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("AllowReactUI");
 
-app.UseHttpsRedirection();
+if (tlsEnabled)
+{
+    app.UseHttpsRedirection();
+    app.UseAuthentication();
+}
 
-app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

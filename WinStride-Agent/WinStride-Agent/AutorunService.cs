@@ -41,7 +41,7 @@ namespace WinStrideAgent.Services
             {
                 item.BatchId = batchId;
                 item.MachineName = _machineName;
-                item.TimeSynced = DateTimeOffset.UtcNow;
+                item.TimeSynced = DateTime.UtcNow;
             }
 
             try

@@ -21,23 +21,16 @@ namespace WinStrideApi.Data
         {
             modelBuilder.Entity<WinEvent>(entity =>
             {
-                entity.HasIndex(e => new { e.LogName, e.TimeCreated })
-                      .IsDescending(false, true);
-
+                entity.HasIndex(e => new { e.LogName, e.TimeCreated });
                 entity.HasIndex(e => e.EventId);
-
-                entity.HasIndex(e => e.TimeCreated)
-                      .IsDescending(true);
+                entity.HasIndex(e => e.TimeCreated);
             });
 
             modelBuilder.Entity<TCPView>(entity =>
             {
                 entity.ToTable("WinNetworkConnections");
-
                 entity.HasIndex(e => e.BatchId);
-
-                entity.HasIndex(e => new { e.MachineName, e.TimeCreated })
-                      .IsDescending(false, true);
+                entity.HasIndex(e => new { e.MachineName, e.TimeCreated });
             });
 
             modelBuilder.Entity<AutorunView>(entity =>
@@ -50,11 +43,8 @@ namespace WinStrideApi.Data
                 entity.Property(e => e.ImagePath).IsRequired(false);
 
                 entity.HasIndex(e => e.BatchId);
-
                 entity.HasIndex(e => e.Entry);
-
-                entity.HasIndex(e => new { e.MachineName, e.TimeSynced })
-                      .IsDescending(false, true);
+                entity.HasIndex(e => new { e.MachineName, e.TimeSynced });
             });
 
             modelBuilder.Entity<WinProcess>(entity =>
@@ -64,10 +54,7 @@ namespace WinStrideApi.Data
                 entity.Property(e => e.MachineName).IsRequired();
                 entity.Property(e => e.BatchId).IsRequired();
 
-                entity.Property(e => e.WorkingSetSize).HasColumnType("bigint");
-
                 entity.HasIndex(e => new { e.MachineName, e.BatchId });
-
                 entity.HasIndex(e => e.Pid);
             });
         }

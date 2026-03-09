@@ -40,7 +40,7 @@ namespace WinStrideApi.Controllers
             try
             {
                 string machineName = incomingAutoruns.First().MachineName;
-                DateTimeOffset syncTime = DateTimeOffset.UtcNow;
+                DateTime syncTime = DateTime.UtcNow;
                 Guid batchId = Guid.NewGuid();
 
                 List<AutorunView> existingEntries = await _context.AutorunViews

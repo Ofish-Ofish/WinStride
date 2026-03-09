@@ -20,9 +20,8 @@ namespace WinStrideApi.Models
         public int? Pid { get; set; }
 
         [Required]
-        public DateTimeOffset TimeCreated { get; set; }
+        public DateTime TimeCreated { get; set; }
 
-        [Column(TypeName = "jsonb")]
         public string? EventData { get; set; }
 
     }

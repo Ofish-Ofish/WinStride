@@ -52,6 +52,6 @@ namespace WinStrideApi.Models
         public long RecvBytes { get; set; } = 0;
 
         [JsonProperty("timeCreated")]
-        public DateTimeOffset TimeCreated { get; set; } = DateTimeOffset.UtcNow;
+        public DateTime TimeCreated { get; set; } = DateTime.UtcNow;
     }
 }

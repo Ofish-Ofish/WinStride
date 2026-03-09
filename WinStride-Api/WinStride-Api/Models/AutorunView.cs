@@ -70,6 +70,6 @@ namespace WinStrideApi.Models
         public string MachineName { get; set; }
 
         [JsonProperty("timeSynced")]
-        public DateTimeOffset TimeSynced { get; set; }
+        public DateTime TimeSynced { get; set; }
     }
 }

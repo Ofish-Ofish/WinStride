@@ -1,5 +1,5 @@
 global:
-  baseUrl: "https://localhost:7097/api/Event"
+  baseUrl: "http://localhost:5090/api/Event"
   certSubject: ""
   batchSize: 100
   heartbeatInterval: 60
