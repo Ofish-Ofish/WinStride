@@ -93,7 +93,7 @@ export default function EventList({ visible = true }: { visible?: boolean }) {
   }, [search]);
 
   /* ---- Data fetch ---- */
-  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount, refetch, isFetching, failureCount } = useModuleEvents({
+  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
     logName: 'Security',
     allEventIds: ALL_EVENT_IDS,
     eventFilters: filters.eventFilters,
@@ -230,9 +230,6 @@ export default function EventList({ visible = true }: { visible?: boolean }) {
       loadedCount={loadedCount}
       totalCount={totalCount}
       isComplete={isComplete}
-      onRefresh={() => refetch()}
-      isRefreshing={isFetching}
-      failureCount={failureCount}
       columns={COLUMNS}
       columnsStorageKey="winstride:listColumns"
       searchPlaceholder="Search... (ip:192.168 user:admin)"

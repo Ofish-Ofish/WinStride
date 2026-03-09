@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef, useReducer, memo } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, memo } from 'react';
 import {
   type ListItem,
   type ColumnDef,
@@ -11,6 +11,7 @@ import {
 } from '../../shared/listUtils';
 import { exportCSV, exportJSON } from '../../shared/eventExport';
 import SidePanel from '../layout/SidePanel';
+import { usePollPause } from '../../shared/context/PollPauseContext';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -180,10 +181,6 @@ export interface VirtualizedEventListProps<T extends ListItem> {
   /** Whether all pages have finished loading */
   isComplete?: boolean;
 
-  /** Manual refresh callback — when provided, shows a refresh button */
-  onRefresh?: () => void;
-  /** True while a refetch is in flight (spins the refresh icon) */
-  isRefreshing?: boolean;
   /** Number of consecutive failed fetch attempts */
   failureCount?: number;
 }
@@ -241,16 +238,10 @@ export default function VirtualizedEventList<T extends ListItem>({
   loadedCount,
   totalCount,
   isComplete,
-  onRefresh,
-  isRefreshing = false,
   failureCount = 0,
 }: VirtualizedEventListProps<T>) {
-  /* ---- Refresh counter — forces re-render so relativeTime() recomputes ---- */
-  const [, forceRender] = useReducer((c: number) => c + 1, 0);
-  const handleRefresh = useCallback(() => {
-    onRefresh?.();
-    forceRender();
-  }, [onRefresh]);
+  /* ---- Pause/resume toggle ---- */
+  const { paused, togglePause } = usePollPause();
 
   /* ---- List state ---- */
   const [sortKey, setSortKey] = useState<string>(defaultSortKey);
@@ -430,17 +421,21 @@ export default function VirtualizedEventList<T extends ListItem>({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
-          {onRefresh && (
-            <ToolbarButton onClick={handleRefresh}>
-              <span className="flex items-center gap-1">
-                <svg className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M1.5 8a6.5 6.5 0 0 1 11.25-4.5M14.5 8a6.5 6.5 0 0 1-11.25 4.5" />
-                  <path d="M13.5 1v3.5H10M2.5 15v-3.5H6" />
+          <ToolbarButton onClick={togglePause}>
+            <span className="flex items-center gap-1">
+              {paused ? (
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M4 2l10 6-10 6V2z" />
                 </svg>
-                Refresh
-              </span>
-            </ToolbarButton>
-          )}
+              ) : (
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+                  <rect x="3" y="2" width="4" height="12" rx="1" />
+                  <rect x="9" y="2" width="4" height="12" rx="1" />
+                </svg>
+              )}
+              {paused ? 'Resume' : 'Live'}
+            </span>
+          </ToolbarButton>
           <ColumnPicker columns={columns} visible={visibleColumns} onToggle={toggleColumn} />
           <ToolbarButton onClick={() => exportCSV(sortedEvents, columns, visibleColumns, exportPrefix, csvEnrichment)}>
             Export CSV
@@ -488,14 +483,6 @@ export default function VirtualizedEventList<T extends ListItem>({
                     ? `Failed to fetch data after ${failureCount} attempts — the server may be unreachable`
                     : 'Error loading events'}
                 </div>
-                {onRefresh && (
-                  <button
-                    onClick={handleRefresh}
-                    className="px-4 py-1.5 text-[12px] rounded-md border border-[#f0a050]/40 text-[#f0a050] hover:bg-[#f0a050]/10 transition-colors"
-                  >
-                    Retry now
-                  </button>
-                )}
               </div>
             ) : (
               <>

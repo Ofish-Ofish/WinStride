@@ -66,7 +66,7 @@ export default function HeartbeatsList({ visible }: { visible: boolean }) {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data, isLoading, error, refetch, isFetching, failureCount } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['heartbeats'],
     queryFn: () => fetchHeartbeats(),
     enabled: visible,
@@ -99,9 +99,6 @@ export default function HeartbeatsList({ visible }: { visible: boolean }) {
       visible={visible}
       isLoading={isLoading}
       error={!!error}
-      onRefresh={() => refetch()}
-      isRefreshing={isFetching}
-      failureCount={failureCount}
       columns={COLUMNS}
       columnsStorageKey="winstride:heartbeatsColumns"
       searchPlaceholder="Search machines..."

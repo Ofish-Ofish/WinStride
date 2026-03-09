@@ -108,7 +108,7 @@ export default function AutorunsList({ visible }: { visible: boolean }) {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data, isLoading, error, refetch, isFetching, failureCount } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['autoruns'],
     queryFn: () => fetchAutoruns(),
     enabled: visible,
@@ -189,9 +189,6 @@ export default function AutorunsList({ visible }: { visible: boolean }) {
       visible={visible}
       isLoading={isLoading}
       error={!!error}
-      onRefresh={() => refetch()}
-      isRefreshing={isFetching}
-      failureCount={failureCount}
       columns={COLUMNS}
       columnsStorageKey="winstride:autorunsColumns"
       searchPlaceholder="Search... (entry:svchost category:Services)"

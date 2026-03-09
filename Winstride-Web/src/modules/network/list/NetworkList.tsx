@@ -140,7 +140,7 @@ export default function NetworkList({ visible }: { visible: boolean }) {
   }, [search]);
 
   /* ---- Data fetch ---- */
-  const { data, isLoading, error, refetch, isFetching, failureCount } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['network-connections'],
     queryFn: () => fetchNetworkConnections(),
     enabled: visible,
@@ -227,9 +227,6 @@ export default function NetworkList({ visible }: { visible: boolean }) {
       visible={visible}
       isLoading={isLoading}
       error={!!error}
-      onRefresh={() => refetch()}
-      isRefreshing={isFetching}
-      failureCount={failureCount}
       columns={COLUMNS}
       columnsStorageKey="winstride:networkColumns"
       searchPlaceholder="Search... (process:chrome state:Established ip:192.168 module:kernel)"

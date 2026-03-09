@@ -86,7 +86,7 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
   }, [search]);
 
   /* ---- Data fetch ---- */
-  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount, refetch, isFetching, failureCount } = useModuleEvents({
+  const { events: rawEvents, isLoading, error, isComplete, loadedCount, totalCount } = useModuleEvents({
     logName: 'Microsoft-Windows-Sysmon/Operational',
     allEventIds: SYSMON_EVENT_IDS,
     eventFilters: filters.eventFilters,
@@ -190,9 +190,6 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
       loadedCount={loadedCount}
       totalCount={totalCount}
       isComplete={isComplete}
-      onRefresh={() => refetch()}
-      isRefreshing={isFetching}
-      failureCount={failureCount}
       columns={COLUMNS}
       columnsStorageKey="winstride:sysmonColumns"
       searchPlaceholder="Search... (process:cmd.exe ip:10.0 user:admin)"
