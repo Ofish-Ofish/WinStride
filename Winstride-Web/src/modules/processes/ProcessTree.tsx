@@ -16,7 +16,7 @@ interface Props {
 
 function ChevronRight({ className = '' }: { className?: string }) {
   return (
-    <svg className={`w-4 h-4 ${className}`} viewBox="0 0 16 16" fill="currentColor">
+    <svg className={`w-5 h-5 ${className}`} viewBox="0 0 16 16" fill="currentColor">
       <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
     </svg>
   );
@@ -24,7 +24,7 @@ function ChevronRight({ className = '' }: { className?: string }) {
 
 function ChevronDown({ className = '' }: { className?: string }) {
   return (
-    <svg className={`w-4 h-4 ${className}`} viewBox="0 0 16 16" fill="currentColor">
+    <svg className={`w-5 h-5 ${className}`} viewBox="0 0 16 16" fill="currentColor">
       <path d="M12.78 5.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 6.28a.75.75 0 0 1 1.06-1.06L8 8.94l3.72-3.72a.75.75 0 0 1 1.06 0Z" />
     </svg>
   );
@@ -74,17 +74,17 @@ function TreeRow({
       {/* Indentation + expand arrow */}
       <div
         className="flex items-center flex-shrink-0"
-        style={{ width: 24 + node.depth * 20, paddingLeft: node.depth * 20 }}
+        style={{ width: 32 + node.depth * 20, paddingLeft: node.depth * 20 }}
       >
         {hasChildren ? (
           <button
             onClick={(e) => { e.stopPropagation(); onToggle(); }}
-            className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-[#58a6ff] rounded transition-colors hover:bg-[#58a6ff]/10"
+            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-[#58a6ff] rounded transition-colors hover:bg-[#58a6ff]/10"
           >
             {isExpanded ? <ChevronDown /> : <ChevronRight />}
           </button>
         ) : (
-          <span className="w-6 flex items-center justify-center">
+          <span className="w-8 flex items-center justify-center">
             <DotIcon className={isSys ? 'text-gray-600' : 'text-gray-500'} />
           </span>
         )}
