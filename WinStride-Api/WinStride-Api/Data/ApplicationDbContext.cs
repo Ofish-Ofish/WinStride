@@ -24,6 +24,7 @@ namespace WinStrideApi.Data
                 entity.HasIndex(e => new { e.LogName, e.TimeCreated });
                 entity.HasIndex(e => e.EventId);
                 entity.HasIndex(e => e.TimeCreated);
+                entity.HasIndex(e => e.Pid);
             });
 
             modelBuilder.Entity<TCPView>(entity =>
