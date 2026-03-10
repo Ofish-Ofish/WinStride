@@ -186,6 +186,7 @@ const EdgePanel = memo(function EdgePanel({ data, detections }: { data: Record<s
       <div className="p-3.5">
         <div className="flex items-center gap-2 mb-3">
           <h3 className="text-[13px] font-semibold text-gray-100 truncate">{logonTypeLabel}</h3>
+          <Badge color={isFailedLogon ? '#f85149' : '#e3b341'}>{data.eventId as number}</Badge>
           {elevatedToken && <Badge color="#f97583">ADMIN</Badge>}
         </div>
 

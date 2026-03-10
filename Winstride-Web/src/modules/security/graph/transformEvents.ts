@@ -161,6 +161,7 @@ export function transformEvents(events: WinEvent[], machineAliases?: MachineAlia
         elevatedToken: logon.elevatedToken,
         failureStatus: logon.failureStatus,
         failureSubStatus: logon.failureSubStatus,
+        eventId: logon.eventId,
         eventIds: [],
         isFailed: logon.eventId === 4625,
       });

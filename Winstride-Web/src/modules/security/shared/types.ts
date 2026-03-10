@@ -68,6 +68,7 @@ export interface GraphEdge {
   elevatedToken: boolean;
   failureStatus: string;
   failureSubStatus: string;
+  eventId: number;
   eventIds: number[];
   isFailed: boolean;
 }
