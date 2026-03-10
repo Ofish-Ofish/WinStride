@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import type { Detection } from '../../shared/detection/rules';
+import { SEVERITY_COLORS } from '../../shared/detection/engine';
 
 /** Key-value row used inside detail expansion panels. */
 export function Row({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
@@ -96,6 +98,35 @@ export function CopyIconButton({ text, title }: { text: string; title?: string }
         </svg>
       )}
     </button>
+  );
+}
+
+/** Shared detection block for detail rows. Renders severity-colored detection cards. */
+export function DetectionBlock({ detections }: { detections?: Detection[] }) {
+  if (!detections || detections.length === 0) return null;
+  return (
+    <div className="mx-4 mt-3 mb-1 space-y-1.5">
+      <div className="text-[11px] font-semibold text-[#ff7b72]">Detections</div>
+      {detections.map((d) => (
+        <div key={d.ruleId} className={`text-[11px] px-2 py-1 rounded border ${SEVERITY_COLORS[d.severity].bg} ${SEVERITY_COLORS[d.severity].border}`}>
+          <span className={`font-semibold ${SEVERITY_COLORS[d.severity].text}`}>[{d.ruleId}]</span>
+          <span className="text-white ml-1.5">{d.ruleName}</span>
+          {d.mitre && <span className="text-gray-300 ml-1.5">({d.mitre})</span>}
+          <div className="text-gray-300 mt-0.5">{d.description}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Detail card wrapper with colored top bar and RawDataToggle at the bottom. */
+export function DetailCard({ color, raw, children }: { color: string; raw: unknown; children: React.ReactNode }) {
+  return (
+    <div className="mx-4 my-2 bg-[#0d1117] border border-[#21262d] rounded-lg overflow-hidden">
+      <div className="h-0.5" style={{ backgroundColor: color }} />
+      {children}
+      <RawDataToggle raw={raw} />
+    </div>
   );
 }
 

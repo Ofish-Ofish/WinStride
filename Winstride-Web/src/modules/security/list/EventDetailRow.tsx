@@ -2,9 +2,8 @@ import { memo } from 'react';
 import type { WinEvent } from '../shared/types';
 import { LOGON_TYPE_LABELS, FAILURE_STATUS_LABELS } from '../shared/eventMeta';
 import { parseEventData } from './listColumns';
-import { Row, SectionLabel, Badge, RawDataToggle } from '../../../components/list/DetailPrimitives';
+import { Row, SectionLabel, Badge, DetectionBlock, DetailCard } from '../../../components/list/DetailPrimitives';
 import type { Detection } from '../../../shared/detection/rules';
-import { SEVERITY_COLORS } from '../../../shared/detection/engine';
 import { type MachineAliasMap, resolveMachineName, getMachineAliasGroup } from '../shared/machineAliases';
 
 /* ------------------------------------------------------------------ */
@@ -175,25 +174,12 @@ export default memo(function EventDetailRow({ event, detections, machineAliases 
   const hasRightColumn = hasNetwork || hasAuth || extraFields.length > 0;
 
   return (
-    <div className="mx-4 my-2 bg-[#0d1117] border border-[#21262d] rounded-lg overflow-hidden">
-      <div className={`h-0.5 ${isFailedLogon ? 'bg-[#f85149]' : 'bg-[#1f6feb]'}`} />
+    <DetailCard color={isFailedLogon ? '#f85149' : '#1f6feb'} raw={data.raw}>
       <div className="px-4 pt-3 pb-1 flex items-center gap-2 text-[13px]">
         <span className="text-gray-300">Time:</span>
         <span className="text-white font-mono">{formatTimestamp(event.timeCreated)}</span>
       </div>
-      {detections && detections.length > 0 && (
-        <div className="mx-4 mt-3 mb-1 space-y-1.5">
-          <div className="text-[11px] font-semibold text-[#ff7b72]">Detections</div>
-          {detections.map((d) => (
-            <div key={d.ruleId} className={`text-[11px] px-2 py-1 rounded border ${SEVERITY_COLORS[d.severity].bg} ${SEVERITY_COLORS[d.severity].border}`}>
-              <span className={`font-semibold ${SEVERITY_COLORS[d.severity].text}`}>[{d.ruleId}]</span>
-              <span className="text-white ml-1.5">{d.ruleName}</span>
-              {d.mitre && <span className="text-gray-300 ml-1.5">({d.mitre})</span>}
-              <div className="text-gray-300 mt-0.5">{d.description}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      <DetectionBlock detections={detections} />
       <div className={`p-4 grid grid-cols-1 ${hasRightColumn ? 'md:grid-cols-2' : ''} gap-x-8 gap-y-0`}>
         {/* Identity */}
         <div>
@@ -299,8 +285,6 @@ export default memo(function EventDetailRow({ event, detections, machineAliases 
           )}
         </div>
       )}
-
-      <RawDataToggle raw={data.raw} />
-    </div>
+    </DetailCard>
   );
 });

@@ -1,8 +1,7 @@
 import type { WinEvent } from '../../security/shared/types';
 import type { Detection } from '../../../shared/detection/rules';
-import { SEVERITY_COLORS } from '../../../shared/detection/engine';
 import { parseScriptBlock, parseCommandExecution, findSuspiciousKeywords } from '../shared/parsePSEvent';
-import { Row, SectionLabel, RawDataToggle, CodeBlock, CopyIconButton } from '../../../components/list/DetailPrimitives';
+import { Row, SectionLabel, CodeBlock, CopyIconButton, DetectionBlock, DetailCard } from '../../../components/list/DetailPrimitives';
 
 /* ------------------------------------------------------------------ */
 /*  Highlighted script text                                            */
@@ -47,22 +46,9 @@ export default function PSDetailRow({ event, detections }: { event: WinEvent; de
     }
 
     return (
-      <div className="mx-4 my-2 bg-[#0d1117] border border-[#21262d] rounded-lg overflow-hidden">
-        <div className={`h-0.5 ${sb.isSuspicious ? 'bg-[#f85149]' : 'bg-[#1f6feb]'}`} />
+      <DetailCard color={sb.isSuspicious ? '#f85149' : '#1f6feb'} raw={event.eventData}>
+        <DetectionBlock detections={detections} />
         <div className="p-4">
-          {detections && detections.length > 0 && (
-            <div className="mb-3 space-y-1.5">
-              <div className="text-[11px] font-semibold text-[#ff7b72]">Detections</div>
-              {detections.map((d) => (
-                <div key={d.ruleId} className={`text-[11px] px-2 py-1 rounded border ${SEVERITY_COLORS[d.severity].bg} ${SEVERITY_COLORS[d.severity].border}`}>
-                  <span className={`font-semibold ${SEVERITY_COLORS[d.severity].text}`}>[{d.ruleId}]</span>
-                  <span className="text-white ml-1.5">{d.ruleName}</span>
-                  {d.mitre && <span className="text-gray-300 ml-1.5">({d.mitre})</span>}
-                  <div className="text-gray-300 mt-0.5">{d.description}</div>
-                </div>
-              ))}
-            </div>
-          )}
           {/* Info bar */}
           <div className="flex flex-wrap items-center gap-3 mb-3 text-[11px] text-gray-400">
             {sb.scriptBlockId && (
@@ -104,9 +90,7 @@ export default function PSDetailRow({ event, detections }: { event: WinEvent; de
             </pre>
           </div>
         </div>
-
-        <RawDataToggle raw={event.eventData} />
-      </div>
+      </DetailCard>
     );
   }
 
@@ -123,22 +107,9 @@ export default function PSDetailRow({ event, detections }: { event: WinEvent; de
     const suspiciousMatches = findSuspiciousKeywords(cmd.commandName + ' ' + cmd.payload);
 
     return (
-      <div className="mx-4 my-2 bg-[#0d1117] border border-[#21262d] rounded-lg overflow-hidden">
-        <div className={`h-0.5 ${suspiciousMatches.length > 0 ? 'bg-[#f0883e]' : 'bg-[#1f6feb]'}`} />
+      <DetailCard color={suspiciousMatches.length > 0 ? '#f0883e' : '#1f6feb'} raw={event.eventData}>
+        <DetectionBlock detections={detections} />
         <div className="p-4">
-          {detections && detections.length > 0 && (
-            <div className="mb-3 space-y-1.5">
-              <div className="text-[11px] font-semibold text-[#ff7b72]">Detections</div>
-              {detections.map((d) => (
-                <div key={d.ruleId} className={`text-[11px] px-2 py-1 rounded border ${SEVERITY_COLORS[d.severity].bg} ${SEVERITY_COLORS[d.severity].border}`}>
-                  <span className={`font-semibold ${SEVERITY_COLORS[d.severity].text}`}>[{d.ruleId}]</span>
-                  <span className="text-white ml-1.5">{d.ruleName}</span>
-                  {d.mitre && <span className="text-gray-300 ml-1.5">({d.mitre})</span>}
-                  <div className="text-gray-300 mt-0.5">{d.description}</div>
-                </div>
-              ))}
-            </div>
-          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0">
             <div>
               <SectionLabel>Command Info</SectionLabel>
@@ -166,9 +137,7 @@ export default function PSDetailRow({ event, detections }: { event: WinEvent; de
             </div>
           </div>
         </div>
-
-        <RawDataToggle raw={event.eventData} />
-      </div>
+      </DetailCard>
     );
   }
 
