@@ -1,8 +1,15 @@
 import { type AutorunsFilters, getDefaultAutorunsFilters } from './shared/filterTypes';
 import {
+  AUTORUNS_PRESETS,
+  serializeAutorunsFilters,
+  deserializeAutorunsFilters,
+  cloneAutorunsFilters,
+} from './shared/filterPresets';
+import {
   SearchableFilterList,
   CollapsibleSection,
   ToggleSwitch,
+  PresetBar,
 } from '../../components/filter';
 
 interface Props {
@@ -24,6 +31,21 @@ export default function AutorunsFilterPanel({
 
   return (
     <div className="p-4 space-y-3">
+      {/* Presets */}
+      <CollapsibleSection title="Presets" defaultOpen={false}>
+        <PresetBar
+          filters={filters}
+          onFiltersChange={onFiltersChange}
+          builtinPresets={AUTORUNS_PRESETS}
+          serialize={serializeAutorunsFilters}
+          deserialize={deserializeAutorunsFilters}
+          cloneFilters={cloneAutorunsFilters}
+          storageKey="winstride:autorunsPresets"
+        />
+      </CollapsibleSection>
+
+      <div className="h-px bg-[#21262d]" />
+
       {/* Categories */}
       <SearchableFilterList
         title="Categories"

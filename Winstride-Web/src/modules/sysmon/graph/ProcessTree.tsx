@@ -27,7 +27,7 @@ import SidePanel from '../../../components/layout/SidePanel';
 
 const GRAPH_DEFAULT_FILTERS: SysmonFilters = {
   eventFilters: new Map<number, FilterState>([[1, 'select']]),
-  timeStart: new Date(Date.now() - 86_400_000).toISOString(), // 24h
+  timeStart: new Date(Date.now() - 259_200_000).toISOString(), // 3d
   timeEnd: '',
   machineFilters: new Map(),
   processFilters: new Map(),

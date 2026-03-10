@@ -1,12 +1,20 @@
 import { PS_EVENT_LABELS, PS_EVENT_IDS } from './shared/eventMeta';
 import { type PSFilters, getDefaultPSFilters } from './shared/filterTypes';
 import {
+  PS_PRESETS,
+  serializePSFilters,
+  deserializePSFilters,
+  clonePSFilters,
+} from './shared/filterPresets';
+import {
   TimeDualSlider,
   SearchableFilterList,
   CollapsibleSection,
   ToggleSwitch,
   SeverityFilter,
+  PresetBar,
 } from '../../components/filter';
+
 
 interface Props {
   filters: PSFilters;
@@ -21,6 +29,21 @@ export default function PSFilterPanel({ filters, onFiltersChange, availableMachi
 
   return (
     <div className="p-4 space-y-3">
+      {/* Presets */}
+      <CollapsibleSection title="Presets" defaultOpen={false}>
+        <PresetBar
+          filters={filters}
+          onFiltersChange={onFiltersChange}
+          builtinPresets={PS_PRESETS}
+          serialize={serializePSFilters}
+          deserialize={deserializePSFilters}
+          cloneFilters={clonePSFilters}
+          storageKey="winstride:psPresets"
+        />
+      </CollapsibleSection>
+
+      <div className="h-px bg-[#21262d]" />
+
       {/* Time Range */}
       <TimeDualSlider
         timeStart={filters.timeStart}

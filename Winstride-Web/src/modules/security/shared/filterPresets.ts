@@ -1,24 +1,6 @@
+import type { Preset } from '../../../components/filter';
 import type { GraphFilters, FilterState } from './filterTypes';
 import { getDefaultFilters } from './filterTypes';
-import { serializeFilters, deserializeFilters, type SerializedGraphFilters } from './filterSerializer';
-
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
-
-export interface FilterPreset {
-  id: string;
-  name: string;
-  builtin: boolean;
-  filters: GraphFilters;
-}
-
-interface StoredCustomPreset {
-  id: string;
-  name: string;
-  builtin: false;
-  filters: SerializedGraphFilters;
-}
 
 /* ------------------------------------------------------------------ */
 /*  Built-in Presets                                                    */
@@ -33,14 +15,56 @@ function preset(overrides: Partial<GraphFilters>): GraphFilters {
   return { ...getDefaultFilters(), ...overrides };
 }
 
-export const BUILTIN_PRESETS: FilterPreset[] = [
+const THREE_DAYS = 259_200_000;
+
+export const BUILTIN_PRESETS: Preset<GraphFilters>[] = [
   {
-    id: 'builtin:auth-only',
-    name: 'Auth Only',
+    id: 'builtin:ccdc-overview',
+    name: 'CCDC Overview',
     builtin: true,
     filters: preset({
-      eventFilters: new Map<number, FilterState>([[4624, 'select'], [4625, 'select'], [4634, 'select']]),
-      timeStart: ago(259_200_000),
+      eventFilters: new Map<number, FilterState>([
+        // Auth (no logoff noise)
+        [4624, 'select'], [4625, 'select'], [4648, 'select'],
+        // Privileges
+        [4672, 'select'],
+        // Account management
+        [4720, 'select'], [4722, 'select'], [4723, 'select'], [4724, 'select'],
+        [4725, 'select'], [4726, 'select'], [4738, 'select'], [4740, 'select'], [4767, 'select'],
+        // Group changes
+        [4728, 'select'], [4732, 'select'], [4733, 'select'], [4756, 'select'],
+        // Kerberos & NTLM
+        [4768, 'select'], [4769, 'select'], [4776, 'select'],
+      ]),
+      timeStart: ago(THREE_DAYS),
+    }),
+  },
+  {
+    id: 'builtin:threats-only',
+    name: 'Threats Only',
+    builtin: true,
+    filters: preset({
+      eventFilters: new Map<number, FilterState>([
+        [4625, 'select'], [4648, 'select'], [4672, 'select'],
+        // Account & group changes (persistence / escalation)
+        [4720, 'select'], [4722, 'select'], [4723, 'select'], [4724, 'select'],
+        [4725, 'select'], [4726, 'select'], [4738, 'select'], [4740, 'select'], [4767, 'select'],
+        [4728, 'select'], [4732, 'select'], [4733, 'select'], [4756, 'select'],
+      ]),
+      timeStart: ago(THREE_DAYS),
+    }),
+  },
+  {
+    id: 'builtin:account-changes',
+    name: 'Acct & Groups',
+    builtin: true,
+    filters: preset({
+      eventFilters: new Map<number, FilterState>([
+        [4720, 'select'], [4722, 'select'], [4723, 'select'], [4724, 'select'],
+        [4725, 'select'], [4726, 'select'], [4738, 'select'], [4740, 'select'], [4767, 'select'],
+        [4728, 'select'], [4732, 'select'], [4733, 'select'], [4756, 'select'],
+      ]),
+      timeStart: ago(THREE_DAYS),
     }),
   },
   {
@@ -49,87 +73,7 @@ export const BUILTIN_PRESETS: FilterPreset[] = [
     builtin: true,
     filters: preset({
       eventFilters: new Map(),
-      timeStart: ago(604_800_000),
-      hideMachineAccounts: false,
-    }),
-  },
-  {
-    id: 'builtin:privileges',
-    name: 'Privileges',
-    builtin: true,
-    filters: preset({
-      eventFilters: new Map<number, FilterState>([[4672, 'select'], [4648, 'select']]),
-      timeStart: ago(604_800_000),
-    }),
-  },
-  {
-    id: 'builtin:account-mgmt',
-    name: 'Acct Mgmt',
-    builtin: true,
-    filters: preset({
-      eventFilters: new Map<number, FilterState>([
-        [4720, 'select'], [4722, 'select'], [4723, 'select'], [4724, 'select'],
-        [4725, 'select'], [4726, 'select'], [4738, 'select'], [4740, 'select'], [4767, 'select'],
-      ]),
-      timeStart: ago(1_209_600_000),
+      timeStart: ago(THREE_DAYS),
     }),
   },
 ];
-
-/* ------------------------------------------------------------------ */
-/*  Custom Preset CRUD (localStorage)                                  */
-/* ------------------------------------------------------------------ */
-
-const PRESETS_KEY = 'winstride:graphFilterPresets';
-
-export function loadCustomPresets(): FilterPreset[] {
-  try {
-    const raw = localStorage.getItem(PRESETS_KEY);
-    if (!raw) return [];
-    const arr: StoredCustomPreset[] = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr.map((p) => ({
-      id: p.id,
-      name: p.name,
-      builtin: false as const,
-      filters: deserializeFilters(p.filters),
-    }));
-  } catch {
-    return [];
-  }
-}
-
-function saveCustomPresetsRaw(presets: StoredCustomPreset[]): void {
-  try {
-    localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
-  } catch { /* quota */ }
-}
-
-function loadCustomPresetsRaw(): StoredCustomPreset[] {
-  try {
-    const raw = localStorage.getItem(PRESETS_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveCustomPreset(name: string, filters: GraphFilters): FilterPreset {
-  const existing = loadCustomPresetsRaw();
-  const preset: StoredCustomPreset = {
-    id: `custom:${Date.now()}`,
-    name,
-    builtin: false,
-    filters: serializeFilters(filters),
-  };
-  existing.push(preset);
-  saveCustomPresetsRaw(existing);
-  return { id: preset.id, name, builtin: false, filters };
-}
-
-export function deleteCustomPreset(id: string): void {
-  const existing = loadCustomPresetsRaw();
-  saveCustomPresetsRaw(existing.filter((p) => p.id !== id));
-}

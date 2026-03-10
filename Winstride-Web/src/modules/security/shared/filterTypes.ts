@@ -31,7 +31,19 @@ export interface GraphFilters {
 
 export function getDefaultFilters(): GraphFilters {
   return {
-    eventFilters: new Map<number, FilterState>([[4624, 'select'], [4625, 'select'], [4634, 'select']]),
+    eventFilters: new Map<number, FilterState>([
+      // Auth (no logoff noise)
+      [4624, 'select'], [4625, 'select'], [4648, 'select'],
+      // Privileges
+      [4672, 'select'],
+      // Account management
+      [4720, 'select'], [4722, 'select'], [4723, 'select'], [4724, 'select'],
+      [4725, 'select'], [4726, 'select'], [4738, 'select'], [4740, 'select'], [4767, 'select'],
+      // Group changes
+      [4728, 'select'], [4732, 'select'], [4733, 'select'], [4756, 'select'],
+      // Kerberos & NTLM
+      [4768, 'select'], [4769, 'select'], [4776, 'select'],
+    ]),
     timeStart: new Date(Date.now() - 259_200_000).toISOString(), // 3d ago
     timeEnd: '',
     machineFilters: new Map(),

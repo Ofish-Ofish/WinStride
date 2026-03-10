@@ -9,3 +9,4 @@ export { default as ToggleSwitch } from './ToggleSwitch';
 export { default as TimeDualSlider } from './TimeDualSlider';
 export { default as SearchableFilterList } from './SearchableFilterList';
 export { default as SeverityFilter } from './SeverityFilter';
+export { default as PresetBar, type Preset, type PresetBarProps } from './PresetBar';

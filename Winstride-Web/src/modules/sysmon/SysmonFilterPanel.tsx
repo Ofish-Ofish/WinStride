@@ -1,12 +1,19 @@
 import { SYSMON_EVENT_LABELS, SYSMON_EVENT_IDS, INTEGRITY_LEVELS } from './shared/eventMeta';
 import { type SysmonFilters, getDefaultSysmonFilters } from './shared/filterTypes';
 import {
+  SYSMON_PRESETS,
+  serializeSysmonFilters,
+  deserializeSysmonFilters,
+  cloneSysmonFilters,
+} from './shared/filterPresets';
+import {
   TimeDualSlider,
   SearchableFilterList,
   CollapsibleSection,
   TriStateCheckbox,
   cycleMap,
   SeverityFilter,
+  PresetBar,
 } from '../../components/filter';
 
 interface Props {
@@ -30,6 +37,21 @@ export default function SysmonFilterPanel({
 
   return (
     <div className="p-4 space-y-3">
+      {/* Presets */}
+      <CollapsibleSection title="Presets" defaultOpen={false}>
+        <PresetBar
+          filters={filters}
+          onFiltersChange={onFiltersChange}
+          builtinPresets={SYSMON_PRESETS}
+          serialize={serializeSysmonFilters}
+          deserialize={deserializeSysmonFilters}
+          cloneFilters={cloneSysmonFilters}
+          storageKey="winstride:sysmonPresets"
+        />
+      </CollapsibleSection>
+
+      <div className="h-px bg-[#21262d]" />
+
       {/* Time Range */}
       <TimeDualSlider
         timeStart={filters.timeStart}

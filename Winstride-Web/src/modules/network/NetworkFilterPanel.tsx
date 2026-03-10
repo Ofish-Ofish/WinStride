@@ -1,5 +1,11 @@
 import { type NetworkFilters, getDefaultNetworkFilters } from './shared/filterTypes';
-import { SearchableFilterList } from '../../components/filter';
+import {
+  NETWORK_PRESETS,
+  serializeNetworkFilters,
+  deserializeNetworkFilters,
+  cloneNetworkFilters,
+} from './shared/filterPresets';
+import { SearchableFilterList, PresetBar, CollapsibleSection } from '../../components/filter';
 
 interface Props {
   filters: NetworkFilters;
@@ -24,6 +30,21 @@ export default function NetworkFilterPanel({
 
   return (
     <div className="p-4 space-y-3">
+      {/* Presets */}
+      <CollapsibleSection title="Presets" defaultOpen={false}>
+        <PresetBar
+          filters={filters}
+          onFiltersChange={onFiltersChange}
+          builtinPresets={NETWORK_PRESETS}
+          serialize={serializeNetworkFilters}
+          deserialize={deserializeNetworkFilters}
+          cloneFilters={cloneNetworkFilters}
+          storageKey="winstride:networkPresets"
+        />
+      </CollapsibleSection>
+
+      <div className="h-px bg-[#21262d]" />
+
       {/* Connection States */}
       <SearchableFilterList
         title="States"

@@ -138,7 +138,7 @@ export const COLUMNS: ColumnDef<WinEvent>[] = [
   {
     key: 'ip',
     label: 'IP',
-    defaultVisible: false,
+    defaultVisible: true,
     sortable: true,
     flex: 1.5,
     minWidth: 110,

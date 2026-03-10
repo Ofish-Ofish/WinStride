@@ -125,7 +125,7 @@ export const COLUMNS: ColumnDef<WinEvent>[] = [
   {
     key: 'parent',
     label: 'Parent',
-    defaultVisible: false,
+    defaultVisible: true,
     sortable: true,
     flex: 1.5,
     minWidth: 110,
