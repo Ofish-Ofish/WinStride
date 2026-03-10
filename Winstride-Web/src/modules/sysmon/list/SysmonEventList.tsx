@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DEFAULT_SYSMON_FILTERS, type SysmonFilters } from '../shared/filterTypes';
 import { loadSysmonFilters, saveSysmonFilters } from '../shared/filterSerializer';
 import { SYSMON_EVENT_LABELS, SYSMON_EVENT_IDS, EVENT_COLORS, INTEGRITY_COLORS } from '../shared/eventMeta';
@@ -57,10 +58,12 @@ function renderCell(col: ColumnDef, event: WinEvent): React.ReactNode | null {
 /* ------------------------------------------------------------------ */
 
 function getExtraSearchFields(e: WinEvent, severityLabel: string): Record<string, string> {
+  const proc = parseProcessCreate(e);
   const net = parseNetworkConnect(e);
   const file = parseFileCreate(e);
   return {
     risk: severityLabel, severity: severityLabel,
+    pid: proc?.processId ? String(proc.processId) : '',
     ip: net?.destinationIp ?? '', destination: net?.destinationIp ?? '', dst: net?.destinationIp ?? '',
     port: String(net?.destinationPort ?? ''),
     protocol: net?.protocol ?? '',
@@ -73,11 +76,14 @@ function getExtraSearchFields(e: WinEvent, severityLabel: string): Record<string
 /* ------------------------------------------------------------------ */
 
 export default function SysmonEventList({ visible }: { visible: boolean }) {
+  const [searchParams] = useSearchParams();
+
   /* ---- Filter state ---- */
   const [filters, setFilters] = useState<SysmonFilters>(() => loadSysmonFilters() ?? DEFAULT_SYSMON_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const initialSearch = searchParams.get('search') ?? '';
+  const [search, setSearch] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
 
   useEffect(() => { saveSysmonFilters(filters); }, [filters]);
   useEffect(() => {
@@ -192,7 +198,7 @@ export default function SysmonEventList({ visible }: { visible: boolean }) {
       isComplete={isComplete}
       columns={COLUMNS}
       columnsStorageKey="winstride:sysmonColumns"
-      searchPlaceholder="Search... (process:cmd.exe ip:10.0 user:admin)"
+      searchPlaceholder="Search... (process:cmd.exe pid:1234 ip:10.0 user:admin)"
       emptyMessage="No events found. Make sure the Agent is collecting Sysmon events."
       csvEnrichment={(col, e) => {
         if (col.key === 'type') { const label = SYSMON_EVENT_LABELS[e.eventId]; return label ? `${e.eventId} ${label}` : undefined; }

@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { fetchEventsPaged } from '../../api/client';
 import { getDataArray, getDataField } from '../../shared/eventParsing';
 import { Row, SectionLabel, CodeBlock } from '../../components/list/DetailPrimitives';
@@ -55,11 +54,13 @@ function Spinner() {
   return <div className="w-4 h-4 border-2 border-gray-600 border-t-gray-300 rounded-full animate-spin" />;
 }
 
-function LinkButton({ to, color, children }: { to: string; color: string; children: React.ReactNode }) {
+function LinkButton({ href, color, children }: { href: string; color: string; children: React.ReactNode }) {
   return (
-    <Link
-      to={to}
-      className={`inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 text-[12px] font-medium rounded-md border transition-colors`}
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 text-[12px] font-medium rounded-md border transition-colors"
       style={{
         color,
         borderColor: `${color}40`,
@@ -70,7 +71,7 @@ function LinkButton({ to, color, children }: { to: string; color: string; childr
       <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
         <path d="M8.22 2.97a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06l2.97-2.97H3.75a.75.75 0 0 1 0-1.5h7.44L8.22 4.03a.75.75 0 0 1 0-1.06Z" />
       </svg>
-    </Link>
+    </a>
   );
 }
 
@@ -197,7 +198,7 @@ export default function ProcessDetailPanel({ process, onClose }: Props) {
             </div>
           )}
 
-          <LinkButton to="/sysmon" color="#58a6ff">View in Sysmon</LinkButton>
+          <LinkButton href={`/sysmon?search=pid:${process.pid}`} color="#58a6ff">View in Sysmon</LinkButton>
         </div>
 
         {/* PowerShell Section */}
@@ -237,7 +238,7 @@ export default function ProcessDetailPanel({ process, onClose }: Props) {
               </div>
             )}
 
-            <LinkButton to="/powershell" color="#da8ee7">View in PowerShell</LinkButton>
+            <LinkButton href={`/powershell?search=pid:${process.pid}`} color="#da8ee7">View in PowerShell</LinkButton>
           </div>
         )}
       </div>

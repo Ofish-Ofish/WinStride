@@ -1,9 +1,11 @@
 import { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DEFAULT_PS_FILTERS, type PSFilters } from '../shared/filterTypes';
 import { loadPSFilters, savePSFilters } from '../shared/filterSerializer';
 import { PS_EVENT_LABELS, PS_EVENT_IDS } from '../shared/eventMeta';
 import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
 import { parseScriptBlock, parseCommandExecution } from '../shared/parsePSEvent';
+import { getSystemField } from '../../../shared/eventParsing';
 import PSFilterPanel from '../PSFilterPanel';
 import PSDetailRow from './PSDetailRow';
 import { useSeverityIntegration } from '../../../shared/detection/engine';
@@ -78,6 +80,7 @@ function getExtraSearchFields(e: WinEvent, severityLabel: string): Record<string
   const cmd = parseCommandExecution(e);
   return {
     risk: severityLabel, severity: severityLabel,
+    pid: getSystemField(e, 'Execution_ProcessID'),
     level: e.level ?? '',
     payload: cmd?.payload ?? '',
   };
@@ -88,11 +91,14 @@ function getExtraSearchFields(e: WinEvent, severityLabel: string): Record<string
 /* ------------------------------------------------------------------ */
 
 export default function PSEventList({ visible }: { visible: boolean }) {
+  const [searchParams] = useSearchParams();
+
   /* ---- Filter state ---- */
   const [filters, setFilters] = useState<PSFilters>(() => loadPSFilters() ?? DEFAULT_PS_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const initialSearch = searchParams.get('search') ?? '';
+  const [search, setSearch] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
 
   useEffect(() => { savePSFilters(filters); }, [filters]);
   useEffect(() => {
@@ -173,7 +179,7 @@ export default function PSEventList({ visible }: { visible: boolean }) {
       isComplete={isComplete}
       columns={COLUMNS}
       columnsStorageKey="winstride:psColumns"
-      searchPlaceholder="Search... (command:Invoke path:temp level:Warning)"
+      searchPlaceholder="Search... (command:Invoke pid:1234 path:temp level:Warning)"
       emptyMessage="No events found. Make sure the Agent is collecting PowerShell events."
       csvEnrichment={(col, e) => {
         if (col.key === 'eventId') { const label = PS_EVENT_LABELS[e.eventId]; return label ? `${e.eventId} ${label}` : undefined; }
