@@ -8,7 +8,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using WinStride_Api.Models;
-using WinStrideApi.Models;
+using WinStrideAgent.Utils;
 
 namespace WinStrideAgent.Services
 {
@@ -32,36 +32,37 @@ namespace WinStrideAgent.Services
             foreach (WinProcess proc in currentProcesses)
             {
                 proc.MachineName = _machineName;
+                proc.BatchId = agentBatchId;
             }
 
             try
             {
                 string endpoint;
-                if (_baseUrl.EndsWith("/Event", StringComparison.OrdinalIgnoreCase))
+                if (_baseUrl.Contains("/api/Event", StringComparison.OrdinalIgnoreCase))
                 {
-                    endpoint = _baseUrl.Substring(0, _baseUrl.LastIndexOf("/Event", StringComparison.OrdinalIgnoreCase)) + "/processes/sync";
+                    endpoint = _baseUrl.Replace("/api/Event", "/api/processes/sync");
                 }
                 else
                 {
                     endpoint = $"{_baseUrl.TrimEnd('/')}/api/processes/sync";
                 }
 
-                Logger.WriteLine($"[WinProcesses] Syncing to: {endpoint}");
+                Logger.WriteLine($"[WinProcesses] Syncing {currentProcesses.Count} processes to: {endpoint}");
 
                 string json = JsonConvert.SerializeObject(currentProcesses);
-                StringContent content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                HttpResponseMessage response = await _httpClient.PostAsync(endpoint, content);
-
-                if (response.IsSuccessStatusCode)
+                using (StringContent content = new StringContent(json, Encoding.UTF8, "application/json"))
                 {
-                    string result = await response.Content.ReadAsStringAsync();
-                    Logger.WriteLine($"[WinProcesses] Sync Success: {result}");
-                }
-                else
-                {
-                    string error = await response.Content.ReadAsStringAsync();
-                    Logger.WriteLine($"[WinProcesses] Sync Failed ({response.StatusCode}): {error}");
+                    HttpResponseMessage response = await _httpClient.PostAsync(endpoint, content);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        Logger.WriteLine($"[WinProcesses] Sync Success (Batch: {agentBatchId})");
+                    }
+                    else
+                    {
+                        string error = await response.Content.ReadAsStringAsync();
+                        Logger.WriteLine($"[WinProcesses] Sync Failed ({response.StatusCode}): {error}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -90,37 +91,37 @@ namespace WinStrideAgent.Services
                 {
                     using (StreamReader reader = process.StandardOutput)
                     {
-                        string headerLine = reader.ReadLine();
-                        while (headerLine != null && !headerLine.Contains("Node"))
+                        string line;
+                        while ((line = reader.ReadLine()) != null)
                         {
-                            headerLine = reader.ReadLine();
-                        }
-
-                        while (!reader.EndOfStream)
-                        {
-                            string line = reader.ReadLine();
-                            if (string.IsNullOrWhiteSpace(line)) continue;
+                            if (string.IsNullOrWhiteSpace(line) || line.Contains("Node"))
+                                continue;
 
                             string[] parts = line.Split(',');
+
                             if (parts.Length < 7) continue;
 
                             try
                             {
+                                string filePath = parts[1].Trim();
+
                                 WinProcess wp = new WinProcess
                                 {
-                                    Path = parts[1].Trim(),
+                                    Path = filePath,
                                     ImageName = parts[2].Trim(),
                                     ParentPid = int.TryParse(parts[3], out int ppid) ? ppid : 0,
                                     Pid = int.TryParse(parts[4], out int pid) ? pid : 0,
                                     SessionId = int.TryParse(parts[5], out int sid) ? sid : 0,
-                                    WorkingSetSize = long.TryParse(parts[6], out long mem) ? mem : 0
+                                    WorkingSetSize = long.TryParse(parts[6], out long mem) ? mem : 0,
+
+                                    VerificationStatus = SigCheck.GetSignatureStatus(filePath)
                                 };
 
                                 snapshots.Add(wp);
                             }
                             catch (Exception ex)
                             {
-                                Debug.WriteLine($"[WinProcesses] Row Parse Error: {ex.Message}");
+                                Debug.WriteLine($"[WinProcesses] Parse error on row: {ex.Message}");
                             }
                         }
                     }
@@ -128,7 +129,7 @@ namespace WinStrideAgent.Services
             }
             catch (Exception ex)
             {
-                Logger.WriteLine($"[WinProcesses] Capture Error: {ex.Message}");
+                Logger.WriteLine($"[WinProcesses] WMIC Capture Error: {ex.Message}");
             }
 
             return snapshots;

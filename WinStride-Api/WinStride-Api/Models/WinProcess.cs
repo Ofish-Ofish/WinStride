@@ -28,5 +28,8 @@ namespace WinStride_Api.Models
         public long WorkingSetSize { get; set; }
 
         public string? Path { get; set; }
+
+        public string? VerificationStatus { get; set; }
+
     }
 }
