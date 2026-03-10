@@ -1,5 +1,5 @@
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef } from 'react';
 import { fetchEventsPaged, type PagedResponse } from '../../api/client';
 import type { WinEvent } from '../../modules/security/shared/types';
 import type { FilterState } from '../../components/filter/filterPrimitives';
@@ -83,6 +83,9 @@ export function useModuleEvents(filters: ServerFilters, options?: ModuleEventsOp
       queryClient.removeQueries({
         queryKey: ['module-events', filters.logName, prevFilter.current],
       });
+      queryClient.removeQueries({
+        queryKey: ['module-events-poll', filters.logName, prevFilter.current],
+      });
       prevFilter.current = odataFilter;
     }
   }, [queryClient, filters.logName, odataFilter]);
@@ -131,38 +134,38 @@ export function useModuleEvents(filters: ServerFilters, options?: ModuleEventsOp
   const isComplete = !hasNextPage && !isLoading;
   const { paused } = usePollPause();
 
-  // Base events from pagination
-  const baseEvents = useMemo(
+  // All events flattened from the infinite query cache (single source of truth)
+  const events = useMemo(
     () => data?.pages.flatMap((p) => p.events) ?? [],
     [data],
   );
 
-  // Track newest timestamp from base pagination
-  const baseNewestTs = baseEvents[0]?.timeCreated ?? '';
-
-  // Accumulate polled events in state so the array only grows
-  const [polledEvents, setPolledEvents] = useState<WinEvent[]>([]);
-  const knownIdsRef = useRef(new Set<number>());
-
-  // Rebuild known IDs when base pagination data changes
-  useEffect(() => {
-    const ids = new Set<number>();
-    for (const e of baseEvents) ids.add(e.id);
-    for (const e of polledEvents) ids.add(e.id);
-    knownIdsRef.current = ids;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseEvents]); // Intentionally omit polledEvents — only rebuild on base data change
-
-  // Newest timestamp across both sources (polled events are prepended, so [0] is newest)
+  // Track newest timestamp for polling
   const newestTsRef = useRef('');
   useEffect(() => {
-    newestTsRef.current = polledEvents[0]?.timeCreated ?? baseNewestTs;
-  }, [polledEvents, baseNewestTs]);
+    if (events[0]?.timeCreated) newestTsRef.current = events[0].timeCreated;
+  }, [events]);
 
-  // Reset polled events when filters change
+  // Track known IDs to deduplicate polled events (add incrementally, reset on filter change)
+  const knownIdsRef = useRef(new Set<number>());
+  const prevEventsLenRef = useRef(0);
   useEffect(() => {
-    setPolledEvents([]);
-  }, [odataFilter]);
+    // On filter change the cache is replaced, so rebuild from scratch
+    if (events.length < prevEventsLenRef.current) {
+      knownIdsRef.current = new Set(events.map((e) => e.id));
+    } else {
+      // Only add IDs we haven't seen yet (new events are prepended to page 0)
+      for (let i = 0; i < events.length - prevEventsLenRef.current; i++) {
+        knownIdsRef.current.add(events[i].id);
+      }
+    }
+    prevEventsLenRef.current = events.length;
+  }, [events]);
+
+  const queryKey = useMemo(
+    () => ['module-events', filters.logName, odataFilter] as const,
+    [filters.logName, odataFilter],
+  );
 
   const pollQuery = useQuery<PagedResponse>({
     queryKey: ['module-events-poll', filters.logName, odataFilter],
@@ -178,26 +181,34 @@ export function useModuleEvents(filters: ServerFilters, options?: ModuleEventsOp
         $top: '500',
       });
     },
-    enabled: isComplete && enabled && !paused && !!baseNewestTs,
+    enabled: isComplete && enabled && !paused && !!newestTsRef.current,
     refetchInterval: 2_000,
     retry: 1,
   });
 
-  // Merge poll results into accumulated polled events
+  // Merge polled events directly into the infinite query cache (page 0)
   useEffect(() => {
     const fresh = pollQuery.data?.events;
     if (!fresh || fresh.length === 0) return;
     const newOnes = fresh.filter((e) => !knownIdsRef.current.has(e.id));
     if (newOnes.length === 0) return;
-    for (const e of newOnes) knownIdsRef.current.add(e.id);
-    setPolledEvents((prev) => [...newOnes, ...prev]);
-  }, [pollQuery.data]);
 
-  // Final merged array — polled events prepended, array only grows
-  const events = useMemo(
-    () => (polledEvents.length > 0 ? [...polledEvents, ...baseEvents] : baseEvents),
-    [polledEvents, baseEvents],
-  );
+    queryClient.setQueryData<InfiniteData<PagedResponse>>(
+      queryKey,
+      (old) => {
+        if (!old) return old;
+        const firstPage = old.pages[0];
+        const merged = [...newOnes, ...firstPage.events];
+        return {
+          ...old,
+          pages: [
+            { ...firstPage, events: merged },
+            ...old.pages.slice(1),
+          ],
+        };
+      },
+    );
+  }, [pollQuery.data, queryClient, queryKey]);
 
   const totalCount = data?.pages[0]?.totalCount ?? null;
 

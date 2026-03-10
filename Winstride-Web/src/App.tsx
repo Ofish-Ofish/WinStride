@@ -14,7 +14,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 5 * 60 * 1000,      // 5 min — tab switches don't refetch
-      gcTime: 10 * 60 * 1000,         // 10 min — cache survives unmount
+      gcTime: 2 * 60 * 1000,          // 2 min — shorter retention to limit memory
       refetchOnWindowFocus: false,     // no surprise refetches
     },
   },
