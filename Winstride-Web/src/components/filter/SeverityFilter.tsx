@@ -4,7 +4,7 @@ import CollapsibleSection from './CollapsibleSection';
 
 export type SeverityFilterValue = Set<Severity | 'undetected'>;
 
-const LEVELS: (Severity | 'undetected')[] = ['undetected', 'info', 'low', 'medium', 'high', 'critical'];
+const LEVELS: (Severity | 'undetected')[] = ['undetected', 'low', 'medium', 'high', 'critical'];
 
 const DISPLAY: Record<string, string> = { ...SEVERITY_LABELS, undetected: 'None' };
 
