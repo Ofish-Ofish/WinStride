@@ -1,0 +1,28 @@
+title: Registry Persistence via PowerShell
+id: b0000002-0000-0000-0000-000000000017
+name: ps_registry_persistence
+status: stable
+description: PowerShell commands modify registry Run keys or other persistence locations — common persistence establishment technique.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1547.001
+logsource:
+    category: ps_script
+    product: windows
+detection:
+    selection_reg:
+        ScriptBlockText|contains:
+            - 'Set-ItemProperty'
+            - 'New-ItemProperty'
+    selection_keys:
+        ScriptBlockText|contains:
+            - 'CurrentVersion\Run'
+            - 'CurrentVersion\RunOnce'
+            - 'CurrentVersion\RunServices'
+            - 'Winlogon\Shell'
+            - 'Winlogon\Userinit'
+            - 'Explorer\User Shell Folders'
+    condition: selection_reg and selection_keys
+level: high

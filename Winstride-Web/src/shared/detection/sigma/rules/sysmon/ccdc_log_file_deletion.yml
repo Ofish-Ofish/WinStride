@@ -1,0 +1,19 @@
+title: Windows Event Log File Deletion
+id: b0000001-0000-0000-0000-000000000037
+name: log_file_deletion
+status: stable
+description: A Windows event log file was deleted — indicates anti-forensics or evidence destruction by an attacker.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1070.001
+logsource:
+    category: file_delete
+    product: windows
+detection:
+    selection:
+        TargetFilename|contains: '\winevt\Logs\'
+        TargetFilename|endswith: '.evtx'
+    condition: selection
+level: critical

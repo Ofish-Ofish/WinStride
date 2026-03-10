@@ -1,0 +1,18 @@
+title: Process Tampering Detected
+id: b0000001-0000-0000-0000-000000000023
+name: process_tampering
+status: stable
+description: Sysmon detected process tampering (process hollowing, herpaderping, or image modification) — strong defense evasion indicator.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1055.012
+logsource:
+    category: process_tampering
+    product: windows
+detection:
+    selection:
+        EventID: 25
+    condition: selection
+level: high

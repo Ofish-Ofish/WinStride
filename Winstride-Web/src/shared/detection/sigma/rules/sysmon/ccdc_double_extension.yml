@@ -1,0 +1,29 @@
+title: Executable with Double File Extension
+id: b0000001-0000-0000-0000-000000000041
+name: double_extension
+status: stable
+description: A process was created with a double file extension — common social engineering technique to disguise malware as documents.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1036.007
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        Image|contains:
+            - '.doc.exe'
+            - '.docx.exe'
+            - '.pdf.exe'
+            - '.txt.exe'
+            - '.jpg.exe'
+            - '.png.exe'
+            - '.xls.exe'
+            - '.xlsx.exe'
+            - '.ppt.exe'
+            - '.doc.scr'
+            - '.pdf.scr'
+    condition: selection
+level: high

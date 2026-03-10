@@ -1,0 +1,23 @@
+title: PowerShell Remoting to Remote Computer
+id: b0000002-0000-0000-0000-000000000015
+name: ps_remoting_abuse
+status: stable
+description: PowerShell remoting commands targeting a remote computer — may indicate lateral movement via WinRM.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.lateral-movement
+    - attack.t1021.006
+logsource:
+    category: ps_script
+    product: windows
+detection:
+    selection_cmdlet:
+        ScriptBlockText|contains:
+            - 'Enter-PSSession'
+            - 'New-PSSession'
+            - 'Invoke-Command'
+    selection_remote:
+        ScriptBlockText|contains: '-ComputerName'
+    condition: selection_cmdlet and selection_remote
+level: medium

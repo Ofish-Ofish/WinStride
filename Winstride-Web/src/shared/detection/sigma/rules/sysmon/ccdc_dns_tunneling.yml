@@ -1,0 +1,18 @@
+title: Possible DNS Tunneling (Long Subdomain)
+id: b0000001-0000-0000-0000-000000000024
+name: dns_tunneling
+status: stable
+description: A DNS query contained an unusually long subdomain label (50+ chars) — strong indicator of DNS tunneling for data exfiltration or C2.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.command-and-control
+    - attack.t1071.004
+logsource:
+    category: dns_query
+    product: windows
+detection:
+    selection:
+        QueryName|re: '[a-zA-Z0-9\-]{50,}\.'
+    condition: selection
+level: medium

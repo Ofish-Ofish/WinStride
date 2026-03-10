@@ -1,0 +1,22 @@
+title: Service Creation or Modification via PowerShell
+id: b0000002-0000-0000-0000-000000000023
+name: ps_service_abuse
+status: stable
+description: PowerShell commands create or modify Windows services — may indicate persistence via malicious service installation.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1543.003
+logsource:
+    category: ps_script
+    product: windows
+detection:
+    selection:
+        ScriptBlockText|contains:
+            - 'New-Service'
+            - 'Set-Service'
+            - 'sc.exe create'
+            - 'sc.exe config'
+    condition: selection
+level: high

@@ -1,0 +1,37 @@
+title: CLR Loaded by Suspicious Process (Execute-Assembly)
+id: b0000001-0000-0000-0000-000000000027
+name: clr_injection
+status: stable
+description: The .NET CLR was loaded by a process that normally does not use .NET — may indicate Cobalt Strike execute-assembly or similar in-memory .NET execution.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1055
+logsource:
+    category: image_load
+    product: windows
+detection:
+    selection:
+        ImageLoaded|endswith:
+            - '\clr.dll'
+            - '\mscoree.dll'
+    filter_dotnet:
+        Image|endswith:
+            - '\powershell.exe'
+            - '\pwsh.exe'
+            - '\msbuild.exe'
+            - '\installutil.exe'
+            - '\csc.exe'
+            - '\vbc.exe'
+            - '\devenv.exe'
+            - '\dotnet.exe'
+            - '\w3wp.exe'
+            - '\sqlservr.exe'
+            - '\mmc.exe'
+            - '\ServerManager.exe'
+            - '\explorer.exe'
+            - '\svchost.exe'
+            - '\iisexpress.exe'
+    condition: selection and not filter_dotnet
+level: medium

@@ -1,0 +1,18 @@
+title: AppInit_DLLs Registry Modification
+id: b0000001-0000-0000-0000-000000000030
+name: registry_appinit_dlls
+status: stable
+description: The AppInit_DLLs registry value was modified — this DLL will be loaded into every user-mode process, enabling persistence and code injection.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1546.010
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection:
+        TargetObject|contains: '\Microsoft\Windows NT\CurrentVersion\Windows\AppInit_DLLs'
+    condition: selection
+level: high

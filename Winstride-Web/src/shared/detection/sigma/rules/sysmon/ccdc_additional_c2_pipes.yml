@@ -1,0 +1,27 @@
+title: Additional C2 Framework Named Pipe
+id: b0000001-0000-0000-0000-000000000038
+name: additional_c2_pipes
+status: stable
+description: A named pipe matching additional C2 framework patterns was detected — indicates Sliver, Havoc, Mythic, Covenant, or BruteRatel activity.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.command-and-control
+    - attack.t1570
+logsource:
+    category: pipe_created
+    product: windows
+detection:
+    selection:
+        PipeName|contains:
+            - '\demoagent_'
+            - '\Covenant'
+            - '\gruntsvc'
+            - '\SliverPipe'
+            - '\havoc_'
+            - '\bruteratel'
+            - '\MythicPipe'
+            - '\nanodump'
+            - '\crackmapexec'
+    condition: selection
+level: critical

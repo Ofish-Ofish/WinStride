@@ -1,0 +1,28 @@
+title: Token Manipulation via PowerShell
+id: b0000002-0000-0000-0000-000000000020
+name: ps_token_manipulation
+status: stable
+description: PowerShell script performs token manipulation or impersonation — used for privilege escalation via token theft.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.privilege-escalation
+    - attack.t1134
+logsource:
+    category: ps_script
+    product: windows
+detection:
+    selection_api:
+        ScriptBlockText|contains:
+            - 'AdjustTokenPrivileges'
+            - 'DuplicateTokenEx'
+            - 'ImpersonateLoggedOnUser'
+            - 'SetThreadToken'
+            - 'CreateProcessWithToken'
+            - 'ImpersonateNamedPipeClient'
+    selection_dotnet:
+        ScriptBlockText|contains|all:
+            - 'WindowsIdentity'
+            - 'Impersonate'
+    condition: 1 of selection_*
+level: high

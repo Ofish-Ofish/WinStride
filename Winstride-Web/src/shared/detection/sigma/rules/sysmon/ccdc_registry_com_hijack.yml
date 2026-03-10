@@ -1,0 +1,28 @@
+title: COM Object Hijacking via Registry
+id: b0000001-0000-0000-0000-000000000032
+name: registry_com_hijack
+status: stable
+description: A COM object InprocServer32 or LocalServer32 was modified — may indicate COM hijacking for persistence or privilege escalation.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1546.015
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection_clsid:
+        TargetObject|contains: '\Classes\CLSID\'
+    selection_server:
+        TargetObject|contains:
+            - 'InprocServer32'
+            - 'LocalServer32'
+    filter_trusted:
+        Image|endswith:
+            - '\svchost.exe'
+            - '\msiexec.exe'
+            - '\explorer.exe'
+            - '\TrustedInstaller.exe'
+    condition: selection_clsid and selection_server and not filter_trusted
+level: medium

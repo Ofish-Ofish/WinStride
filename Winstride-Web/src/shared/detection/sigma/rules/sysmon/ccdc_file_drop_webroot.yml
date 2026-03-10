@@ -1,0 +1,33 @@
+title: File Dropped in Web Server Directory
+id: b0000001-0000-0000-0000-000000000036
+name: file_drop_webroot
+status: stable
+description: An executable or script file was created in a web server directory — strong indicator of webshell deployment.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.persistence
+    - attack.t1505.003
+logsource:
+    category: file_event
+    product: windows
+detection:
+    selection_path:
+        TargetFilename|contains:
+            - '\inetpub\wwwroot\'
+            - '\xampp\htdocs\'
+            - '\wamp\www\'
+            - '\nginx\html\'
+            - '\Apache24\htdocs\'
+    selection_ext:
+        TargetFilename|endswith:
+            - '.aspx'
+            - '.asp'
+            - '.jsp'
+            - '.php'
+            - '.exe'
+            - '.cmd'
+            - '.bat'
+            - '.ps1'
+    condition: selection_path and selection_ext
+level: critical

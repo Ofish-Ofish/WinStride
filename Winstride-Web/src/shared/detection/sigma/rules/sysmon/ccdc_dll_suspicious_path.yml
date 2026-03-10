@@ -1,0 +1,30 @@
+title: DLL Loaded from Suspicious Directory
+id: b0000001-0000-0000-0000-000000000026
+name: dll_suspicious_path
+status: stable
+description: A DLL was loaded from a non-standard directory (Temp, Downloads, Desktop) — possible DLL side-loading or malware execution.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.defense-evasion
+    - attack.t1574.002
+logsource:
+    category: image_load
+    product: windows
+detection:
+    selection:
+        ImageLoaded|endswith: '.dll'
+    selection_path:
+        ImageLoaded|contains:
+            - '\Temp\'
+            - '\Downloads\'
+            - '\Desktop\'
+            - '\PerfLogs\'
+            - '\Recycle'
+    filter_known:
+        ImageLoaded|contains:
+            - '\Microsoft\'
+            - '\WindowsApps\'
+            - '\WinSxS\'
+    condition: selection and selection_path and not filter_known
+level: medium

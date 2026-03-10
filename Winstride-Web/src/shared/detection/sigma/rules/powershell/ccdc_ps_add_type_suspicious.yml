@@ -1,0 +1,27 @@
+title: Suspicious Add-Type with Win32 API Import
+id: b0000002-0000-0000-0000-000000000014
+name: ps_add_type_suspicious
+status: stable
+description: A PowerShell script uses Add-Type with DllImport or Win32 API calls — indicates direct Windows API access for evasion or injection.
+author: WinStride CCDC
+date: 2025-01-01
+tags:
+    - attack.execution
+    - attack.t1106
+logsource:
+    category: ps_script
+    product: windows
+detection:
+    selection:
+        ScriptBlockText|contains: 'Add-Type'
+    selection_suspicious:
+        ScriptBlockText|contains:
+            - 'DllImport'
+            - 'kernel32'
+            - 'user32'
+            - 'ntdll'
+            - 'advapi32'
+            - 'GetProcAddress'
+            - 'LoadLibrary'
+    condition: selection and selection_suspicious
+level: high
