@@ -23,7 +23,7 @@ public class GlobalSettings
     [YamlMember(Alias = "baseUrl")]
     public string? BaseUrl { get; set; } = null;
 
-    [YamlMember(Alias = "CertSubject")]
+    [YamlMember(Alias = "certSubject")]
     public string? CertSubject { get; set; }
 
     [YamlMember(Alias = "batchSize")]

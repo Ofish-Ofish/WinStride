@@ -32,6 +32,7 @@ $agentDir       = Join-Path $projectRoot "WinStride-Agent\WinStride-Agent"
 $webDir         = Join-Path $projectRoot "Winstride-Web"
 $apiCsproj      = Join-Path $apiDir "WinStride-Api.csproj"
 $agentCsproj    = Join-Path $agentDir "WinStride-Agent.csproj"
+$apiAppSettings = Join-Path $apiDir "appsettings.json"
 
 # -- Helpers --
 
@@ -116,6 +117,76 @@ function Install-Prerequisite {
     $env:Path = "$machinePath;$userPath"
 
     return $true
+}
+
+function Get-ApiPortConfig {
+    param([string]$AppSettingsPath)
+
+    $defaults = @{
+        HttpPort = 5090
+        HttpsPort = 7097
+        TlsEnabled = $false
+    }
+
+    if (-not (Test-Path $AppSettingsPath)) {
+        return $defaults
+    }
+
+    try {
+        $config = Get-Content $AppSettingsPath -Raw | ConvertFrom-Json
+        $httpPort = if ($config.HttpPort) { [int]$config.HttpPort } else { 5090 }
+        $httpsPort = if ($config.HttpsPort) { [int]$config.HttpsPort } else { 7097 }
+        $tlsEnabled = -not [string]::IsNullOrWhiteSpace($config.ServerCertThumbprint)
+
+        return @{
+            HttpPort = $httpPort
+            HttpsPort = $httpsPort
+            TlsEnabled = $tlsEnabled
+        }
+    } catch {
+        Write-Warn "Failed to read API port config from appsettings.json. Using defaults."
+        return $defaults
+    }
+}
+
+function Get-DomainFirewallScope {
+    try {
+        $computerSystem = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+        if (-not $computerSystem.PartOfDomain) {
+            Write-Warn "Machine is not joined to an Active Directory domain."
+            return $null
+        }
+
+        $domainProfiles = Get-NetConnectionProfile -ErrorAction Stop |
+            Where-Object { $_.NetworkCategory -eq "DomainAuthenticated" }
+
+        if (-not $domainProfiles) {
+            Write-Warn "No active DomainAuthenticated network profile was detected."
+            return $null
+        }
+
+        $aliases = $domainProfiles.InterfaceAlias | Sort-Object -Unique
+        if ($aliases) {
+            Write-Info "Domain-authenticated network detected on: $($aliases -join ', ')"
+        }
+
+        return @{
+            Profile = "Domain"
+            RemoteAddress = "LocalSubnet"
+        }
+    } catch {
+        Write-Warn "Failed to detect domain firewall scope automatically: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Write-ManualFirewallCommands {
+    param([int[]]$Ports)
+
+    Write-Info "Use one of the following commands with the exact allowed domain member IPs or CIDRs:"
+    foreach ($port in ($Ports | Sort-Object -Unique)) {
+        Write-Host "       New-NetFirewallRule -DisplayName 'WinStride API TCP $port' -Direction Inbound -Action Allow -Enabled True -Profile Domain -Protocol TCP -LocalPort $port -RemoteAddress '10.0.0.10,10.0.0.11,10.0.1.0/24'" -ForegroundColor White
+    }
 }
 
 # -- Banner --
@@ -242,6 +313,33 @@ if (-not $SkipPrerequisiteCheck) {
     Write-Warn "Skipping prerequisite checks (-SkipPrerequisiteCheck)"
 }
 
+# -- Optional firewall setup --
+
+$portConfig = Get-ApiPortConfig -AppSettingsPath $apiAppSettings
+$portsToOpen = @($portConfig.HttpPort)
+
+if ($portConfig.TlsEnabled -and $portConfig.HttpsPort -ne $portConfig.HttpPort) {
+    $portsToOpen += $portConfig.HttpsPort
+}
+
+$portSummary = ($portsToOpen | Sort-Object -Unique) -join ", "
+if (Request-UserConsent "    Open Windows Firewall for WinStride API port(s): $portSummary for domain clients only?") {
+    Write-Step "Preparing Windows Firewall configuration"
+
+    $firewallScope = Get-DomainFirewallScope
+    if ($null -eq $firewallScope) {
+        Write-Warn "Skipping automatic firewall rule creation."
+        Write-Warn "A domain-member-only allow rule needs an explicit IP/CIDR allow list in this setup."
+        Write-ManualFirewallCommands -Ports $portsToOpen
+    } else {
+        Write-Warn "Automatic firewall rules were not created."
+        Write-Warn "Windows Firewall cannot safely infer the exact domain-member IP allow list from Active Directory."
+        Write-ManualFirewallCommands -Ports $portsToOpen
+    }
+} else {
+    Write-Info "Skipping Windows Firewall changes."
+}
+
 # -- Summary --
 
 Write-Host "`n" -NoNewline
@@ -257,6 +355,9 @@ Write-Host "       .\scripts\setup-certs.ps1 -CAName `"YourCA`"" -ForegroundColo
 Write-Host ""
 Write-Host "    2. Start everything:" -ForegroundColor Yellow
 Write-Host "       .\scripts\start-winstride.ps1" -ForegroundColor White
+Write-Host ""
+Write-Host "    3. Agent-only install/run on another Windows machine:" -ForegroundColor Yellow
+Write-Host "       .\scripts\install-run-agent.ps1" -ForegroundColor White
 Write-Host ""
 Write-Host "  First start will download packages and build automatically." -ForegroundColor Gray
 Write-Host ""

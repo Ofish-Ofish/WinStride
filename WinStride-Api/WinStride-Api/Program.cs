@@ -24,19 +24,14 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     if (tlsEnabled)
     {
+        var serverCertificate = FindServerCertificate(serverCertThumbprint!);
+
         // Secure mode: HTTPS only with mTLS, no HTTP fallback
         options.ListenAnyIP(httpsPort, listenOptions =>
         {
             listenOptions.UseHttps(httpsOptions =>
             {
-                using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
-                store.Open(OpenFlags.ReadOnly);
-                var certs = store.Certificates.Find(
-                    X509FindType.FindByThumbprint, serverCertThumbprint!, false);
-
-                if (certs.Count > 0)
-                    httpsOptions.ServerCertificate = certs[0];
-
+                httpsOptions.ServerCertificate = serverCertificate;
                 httpsOptions.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
             });
         });
@@ -185,4 +180,28 @@ static void EnsureSqliteCompatibility(ApplicationDbContext db)
             connection.Close();
         }
     }
+}
+
+static X509Certificate2 FindServerCertificate(string thumbprint)
+{
+    string normalizedThumbprint = thumbprint.Replace(" ", string.Empty).Trim();
+
+    foreach (var location in new[] { StoreLocation.LocalMachine, StoreLocation.CurrentUser })
+    {
+        using var store = new X509Store(StoreName.My, location);
+        store.Open(OpenFlags.ReadOnly);
+
+        var certs = store.Certificates.Find(
+            X509FindType.FindByThumbprint,
+            normalizedThumbprint,
+            validOnly: false);
+
+        if (certs.Count > 0)
+        {
+            return certs[0];
+        }
+    }
+
+    throw new InvalidOperationException(
+        $"Server certificate with thumbprint '{normalizedThumbprint}' was not found in LocalMachine\\My or CurrentUser\\My.");
 }

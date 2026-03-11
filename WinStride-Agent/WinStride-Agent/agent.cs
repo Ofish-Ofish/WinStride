@@ -6,10 +6,9 @@ using WinStrideAgent.Services;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 using System.Net.Http;
-using System.Security.Cryptography.X509Certificates;
 class Agent
 {
-    private static HttpClient client;
+    private static HttpClient client = null!;
 
     static async Task Main()
     {
@@ -37,9 +36,6 @@ class Agent
             string configPath = Path.Combine(projectRoot, "config.yaml");
             AppConfig fullConfig = LoadConfig(configPath);
 
-            string certSubject = fullConfig.Global.CertSubject ?? Environment.MachineName;
-            client = CreateAuthenticatedClient(certSubject);
-
             if (string.IsNullOrWhiteSpace(fullConfig.Global.BaseUrl))
             {
                 Logger.WriteLine("[CRITICAL ERROR] 'global.baseUrl' is missing in config.yaml.");
@@ -48,6 +44,22 @@ class Agent
             }
 
             string BaseUrl = fullConfig.Global.BaseUrl;
+            if (!Uri.TryCreate(BaseUrl, UriKind.Absolute, out Uri? baseUri) ||
+                (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
+            {
+                Logger.WriteLine($"[CRITICAL ERROR] 'global.baseUrl' is invalid: {BaseUrl}");
+                Logger.WriteLine("Use an absolute http:// or https:// API endpoint in config.yaml.");
+                return;
+            }
+
+            var configuredClient = CreateConfiguredClient(baseUri, fullConfig.Global.CertSubject);
+            if (configuredClient is null)
+            {
+                Logger.WriteLine("The agent cannot start until its HTTPS client certificate is configured correctly.");
+                return;
+            }
+
+            client = configuredClient;
             int batchSize = fullConfig.Global.BatchSize;
             Logger.MaxLogSizeMb = fullConfig.Global.MaxLogSizeMb;
 
@@ -198,14 +210,6 @@ class Agent
         return System.IO.Path.GetDirectoryName(sourceFilePath) ?? string.Empty;
     }
 
-    private static string GetConfigPath()
-    {
-        string appDir = AppDomain.CurrentDomain.BaseDirectory;
-        string productionPath = Path.Combine(appDir, "config.yaml");
-        if (File.Exists(productionPath)) return productionPath;
-        return Path.Combine(GetSourceDirectory(), "config.yaml");
-    }
-
     private static async Task StartHeartbeatLoop(string baseUrl, int intervalSeconds)
     {
         string heartbeatUrl = baseUrl.Replace("/Event", "/Heartbeat");
@@ -247,9 +251,22 @@ class Agent
         }
     }
 
-    private static HttpClient CreateAuthenticatedClient(string certSubject)
+    private static HttpClient? CreateConfiguredClient(Uri baseUri, string? certSubject)
     {
+        if (!string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            Logger.WriteLine("[Auth] HTTP mode detected. Skipping client certificate load.");
+            return new HttpClient();
+        }
+
+        if (string.IsNullOrWhiteSpace(certSubject))
+        {
+            Logger.WriteLine("[CRITICAL] HTTPS mode requires global.certSubject in config.yaml.");
+            return null;
+        }
+
         HttpClientHandler handler = new HttpClientHandler();
+        string thumbprint = certSubject.Replace(" ", string.Empty).Trim();
 
         using (X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser))
         {
@@ -257,7 +274,7 @@ class Agent
 
             X509Certificate2Collection certs = store.Certificates.Find(
                 X509FindType.FindByThumbprint,
-                certSubject,
+                thumbprint,
                 validOnly: false); 
 
             if (certs.Count > 0)
@@ -267,7 +284,8 @@ class Agent
             }
             else
             {
-                Logger.WriteLine($"[CRITICAL] Certificate NOT FOUND in Store! Searched for Thumbprint: {certSubject}");
+                Logger.WriteLine($"[CRITICAL] Certificate NOT FOUND in Store! Searched for Thumbprint: {thumbprint}");
+                return null;
             }
         }
 
