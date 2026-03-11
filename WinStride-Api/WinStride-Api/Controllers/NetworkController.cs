@@ -39,11 +39,14 @@ namespace WinStrideApi.Controllers
                 .Where(c => c.MachineName == machineName)
                 .ToListAsync();
 
-            Func<TCPView, string> keyGen = (c) => 
-                $"{c.Protocol}-{c.LocalAddress}:{c.LocalPort}-{c.RemoteAddress}:{c.RemotePort}";
+            Func<TCPView, string> keyGen = (c) =>
+                $"{c.Protocol}-{c.LocalAddress}:{c.LocalPort}-{c.RemoteAddress}:{c.RemotePort}-{c.ProcessId}";
+
+            var existingLookup = existingConnections
+                .GroupBy(keyGen)
+                .ToDictionary(g => g.Key, g => g.First());
 
             var incomingKeys = incomingConnections.Select(keyGen).ToHashSet();
-
             var toDelete = existingConnections
                 .Where(e => !incomingKeys.Contains(keyGen(e)))
                 .ToList();
@@ -53,12 +56,16 @@ namespace WinStrideApi.Controllers
                 _context.NetworkConnections.RemoveRange(toDelete);
             }
 
+            var processedInThisBatch = new HashSet<string>();
+
             foreach (var incoming in incomingConnections)
             {
                 var incomingKey = keyGen(incoming);
-                var existing = existingConnections.FirstOrDefault(e => keyGen(e) == incomingKey);
 
-                if (existing != null)
+                if (processedInThisBatch.Contains(incomingKey)) continue;
+                processedInThisBatch.Add(incomingKey);
+
+                if (existingLookup.TryGetValue(incomingKey, out var existing))
                 {
                     existing.State = incoming.State;
                     existing.SentBytes = incoming.SentBytes;
@@ -77,12 +84,20 @@ namespace WinStrideApi.Controllers
                 }
             }
 
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Database error: {ex.Message}");
+            }
 
-            return Ok(new { 
-                message = "Sync complete", 
-                activeCount = incomingConnections.Count, 
-                removedCount = toDelete.Count 
+            return Ok(new
+            {
+                message = "Sync complete",
+                activeCount = incomingConnections.Count,
+                removedCount = toDelete.Count
             });
         }
     }

@@ -11,6 +11,7 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using Newtonsoft.Json;
 using WinStrideApi.Models;
+using WinStrideAgent.Utils;
 
 namespace WinStrideAgent.Services
 {
@@ -42,6 +43,16 @@ namespace WinStrideAgent.Services
                 item.BatchId = batchId;
                 item.MachineName = _machineName;
                 item.TimeSynced = DateTime.UtcNow;
+
+                string pathToVerify = !string.IsNullOrWhiteSpace(item.LaunchString)
+                                      ? item.LaunchString
+                                      : item.ImagePath;
+
+                if (!string.IsNullOrWhiteSpace(pathToVerify))
+                {
+                    string cleanedPath = SigCheck.CleanImagePath(pathToVerify);
+                    item.Verified = SigCheck.GetSignatureStatus(cleanedPath);
+                }
             }
 
             try
@@ -57,9 +68,6 @@ namespace WinStrideAgent.Services
                 }
 
                 Logger.WriteLine($"[Autorun] Target Endpoint: {endpoint}");
-
-                // Debug: verify the first item is no longer null
-                Logger.WriteLine($"[DEBUG] Sample Entry: {currentAutoruns[0].Entry} (Time: {currentAutoruns[0].Time})");
 
                 string json = JsonConvert.SerializeObject(currentAutoruns);
                 StringContent content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -86,7 +94,6 @@ namespace WinStrideAgent.Services
         {
             List<AutorunView> snapshots = new List<AutorunView>();
 
-            // Look for binary in Binaries subfolder or root
             string binaryPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Binaries", "autorunsc.exe");
             if (!File.Exists(binaryPath))
             {
@@ -166,22 +173,13 @@ namespace WinStrideAgent.Services
             Map(m => m.Time).Convert(args =>
             {
                 string rawValue = args.Row.GetField("Time");
-                DateTime finalDate;
-
                 if (string.IsNullOrWhiteSpace(rawValue) || rawValue.Equals("n/a", StringComparison.OrdinalIgnoreCase))
                 {
-                    finalDate = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                    return new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
                 }
-                else if (DateTime.TryParse(rawValue, out DateTime parsed))
-                {
-                    finalDate = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
-                }
-                else
-                {
-                    finalDate = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-                }
-
-                return finalDate;
+                return DateTime.TryParse(rawValue, out DateTime parsed)
+                    ? DateTime.SpecifyKind(parsed, DateTimeKind.Utc)
+                    : new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             });
 
             Map(m => m.Verified).Convert(args => {

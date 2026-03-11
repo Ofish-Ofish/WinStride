@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OData.Edm;
 using Microsoft.OData.ModelBuilder;
+using System.Data;
 using System.Security.Cryptography.X509Certificates;
 using WinStride_Api.Models;
 using WinStrideApi.Data;
@@ -128,6 +129,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.EnsureCreated();
+    EnsureSqliteCompatibility(db);
 }
 
 if (app.Environment.IsDevelopment())
@@ -149,3 +151,38 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static void EnsureSqliteCompatibility(ApplicationDbContext db)
+{
+    if (!db.Database.IsSqlite())
+    {
+        return;
+    }
+
+    var connection = db.Database.GetDbConnection();
+    var openedHere = connection.State != ConnectionState.Open;
+
+    if (openedHere)
+    {
+        connection.Open();
+    }
+
+    try
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('WinProcesses') WHERE name = 'VerificationStatus';";
+
+        var hasVerificationStatus = Convert.ToInt32(command.ExecuteScalar()) > 0;
+        if (!hasVerificationStatus)
+        {
+            db.Database.ExecuteSqlRaw(@"ALTER TABLE ""WinProcesses"" ADD COLUMN ""VerificationStatus"" TEXT NULL;");
+        }
+    }
+    finally
+    {
+        if (openedHere)
+        {
+            connection.Close();
+        }
+    }
+}
