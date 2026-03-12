@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.OData.Edm;
 using Microsoft.OData.ModelBuilder;
 using System.Data;
+using System.Data.Common;
 using System.Security.Cryptography.X509Certificates;
 using WinStride_Api.Models;
 using WinStrideApi.Data;
@@ -166,14 +167,23 @@ static void EnsureSqliteCompatibility(ApplicationDbContext db)
 
     try
     {
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('WinProcesses') WHERE name = 'VerificationStatus';";
+        EnsureTableExists(
+            connection,
+            db,
+            "Heartbeats",
+            @"CREATE TABLE ""Heartbeats"" (
+                ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_Heartbeats"" PRIMARY KEY AUTOINCREMENT,
+                ""MachineName"" TEXT NOT NULL,
+                ""IsAlive"" INTEGER NOT NULL,
+                ""LastSeen"" TEXT NOT NULL
+            );");
 
-        var hasVerificationStatus = Convert.ToInt32(command.ExecuteScalar()) > 0;
-        if (!hasVerificationStatus)
-        {
-            db.Database.ExecuteSqlRaw(@"ALTER TABLE ""WinProcesses"" ADD COLUMN ""VerificationStatus"" TEXT NULL;");
-        }
+        EnsureColumnExists(
+            connection,
+            db,
+            "WinProcesses",
+            "VerificationStatus",
+            @"ALTER TABLE ""WinProcesses"" ADD COLUMN ""VerificationStatus"" TEXT NULL;");
     }
     finally
     {
@@ -181,6 +191,39 @@ static void EnsureSqliteCompatibility(ApplicationDbContext db)
         {
             connection.Close();
         }
+    }
+}
+
+static void EnsureTableExists(
+    DbConnection connection,
+    ApplicationDbContext db,
+    string tableName,
+    string createSql)
+{
+    using var command = connection.CreateCommand();
+    command.CommandText = $"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '{tableName}';";
+
+    var tableExists = Convert.ToInt32(command.ExecuteScalar()) > 0;
+    if (!tableExists)
+    {
+        db.Database.ExecuteSqlRaw(createSql);
+    }
+}
+
+static void EnsureColumnExists(
+    DbConnection connection,
+    ApplicationDbContext db,
+    string tableName,
+    string columnName,
+    string alterSql)
+{
+    using var command = connection.CreateCommand();
+    command.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{tableName}') WHERE name = '{columnName}';";
+
+    var columnExists = Convert.ToInt32(command.ExecuteScalar()) > 0;
+    if (!columnExists)
+    {
+        db.Database.ExecuteSqlRaw(alterSql);
     }
 }
 

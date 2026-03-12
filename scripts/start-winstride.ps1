@@ -62,10 +62,113 @@ function Write-Ok   { param([string]$Message) Write-Host "    [OK] $Message" -Fo
 function Write-Warn { param([string]$Message) Write-Host "    [!] $Message" -ForegroundColor Yellow }
 function Write-Err  { param([string]$Message) Write-Host "    [ERROR] $Message" -ForegroundColor Red }
 
+$minimumNode20Version = [version]"20.19.0"
+$minimumNode22Version = [version]"22.12.0"
+
 function Refresh-ProcessPath {
     $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $env:Path = "$machinePath;$userPath"
+}
+
+function Test-Command {
+    param([string]$Name)
+    return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Parse-NodeVersion {
+    param([string]$VersionText)
+
+    if ([string]::IsNullOrWhiteSpace($VersionText)) {
+        return $null
+    }
+
+    $normalized = $VersionText.Trim()
+    if ($normalized.StartsWith("v")) {
+        $normalized = $normalized.Substring(1)
+    }
+
+    try {
+        return [version]$normalized
+    } catch {
+        return $null
+    }
+}
+
+function Test-SupportedNodeVersion {
+    param([string]$VersionText)
+
+    $parsed = Parse-NodeVersion -VersionText $VersionText
+    if ($null -eq $parsed) {
+        return $false
+    }
+
+    return (
+        ($parsed.Major -eq 20 -and $parsed -ge $minimumNode20Version) -or
+        ($parsed.Major -ge 22 -and $parsed -ge $minimumNode22Version)
+    )
+}
+
+function Ensure-WebDependencies {
+    param([string]$WebDirectory)
+
+    if (-not (Test-Command "node")) {
+        throw "Node.js was not found in PATH."
+    }
+
+    $nodeVersion = & node --version 2>&1
+    if (-not (Test-SupportedNodeVersion -VersionText $nodeVersion)) {
+        throw "Node.js $nodeVersion is not supported. Install Node.js 20.19+ or 22.12+."
+    }
+
+    if (-not (Test-Command "npm.cmd")) {
+        throw "npm.cmd was not found in PATH."
+    }
+
+    $viteCmd = Join-Path $WebDirectory "node_modules\.bin\vite.cmd"
+    if (Test-Path $viteCmd) {
+        Write-Ok "Web dependencies already installed"
+        return
+    }
+
+    Write-Step "Installing web dependencies"
+    Push-Location $WebDirectory
+    try {
+        & npm.cmd install --no-fund --no-audit
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm install failed for the web frontend."
+        }
+    } finally {
+        Pop-Location
+    }
+
+    if (-not (Test-Path $viteCmd)) {
+        throw "Web dependencies were installed, but Vite was not found at $viteCmd."
+    }
+
+    Write-Ok "Web dependencies installed"
+}
+
+function Wait-ForLocalPort {
+    param(
+        [int]$Port,
+        [int]$TimeoutSeconds = 15
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $listener = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+            Where-Object { $_.LocalPort -eq $Port } |
+            Select-Object -First 1
+
+        if ($listener) {
+            return $true
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+
+    return $false
 }
 
 function Test-DotNet {
@@ -208,9 +311,17 @@ function Start-WebUi {
         return
     }
 
+    Ensure-WebDependencies -WebDirectory $webDir
+
     Write-Step "Starting Web Frontend"
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$webDir'; Write-Host 'WinStride Web' -ForegroundColor Cyan; npm install --silent; npm run dev" | Out-Null
-    Write-Ok "Web UI starting on http://localhost:5173"
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$webDir'; Write-Host 'WinStride Web' -ForegroundColor Cyan; npm.cmd run dev" | Out-Null
+
+    if (Wait-ForLocalPort -Port 5173 -TimeoutSeconds 15) {
+        Write-Ok "Web UI available on http://localhost:5173"
+    } else {
+        Write-Warn "Web frontend window launched, but port 5173 did not open within 15 seconds."
+        Write-Warn "Check the web window for npm/Vite errors."
+    }
 }
 
 Write-Host ""

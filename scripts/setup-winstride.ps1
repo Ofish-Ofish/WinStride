@@ -42,9 +42,68 @@ function Write-Warn   { param([string]$msg) Write-Host "    [!] $msg" -Foregroun
 function Write-Err    { param([string]$msg) Write-Host "    [ERROR] $msg" -ForegroundColor Red }
 function Write-Info   { param([string]$msg) Write-Host "    $msg" -ForegroundColor Gray }
 
+$minimumNode20Version = [version]"20.19.0"
+$minimumNode22Version = [version]"22.12.0"
+
 function Test-Command {
     param([string]$Name)
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Parse-NodeVersion {
+    param([string]$VersionText)
+
+    if ([string]::IsNullOrWhiteSpace($VersionText)) {
+        return $null
+    }
+
+    $normalized = $VersionText.Trim()
+    if ($normalized.StartsWith("v")) {
+        $normalized = $normalized.Substring(1)
+    }
+
+    try {
+        return [version]$normalized
+    } catch {
+        return $null
+    }
+}
+
+function Test-SupportedNodeVersion {
+    param([string]$VersionText)
+
+    $parsed = Parse-NodeVersion -VersionText $VersionText
+    if ($null -eq $parsed) {
+        return $false
+    }
+
+    return (
+        ($parsed.Major -eq 20 -and $parsed -ge $minimumNode20Version) -or
+        ($parsed.Major -ge 22 -and $parsed -ge $minimumNode22Version)
+    )
+}
+
+function Install-WebDependencies {
+    param([string]$WebDirectory)
+
+    $viteCmd = Join-Path $WebDirectory "node_modules\.bin\vite.cmd"
+
+    Write-Step "Installing web dependencies"
+    Push-Location $WebDirectory
+    try {
+        & npm.cmd install --no-fund --no-audit
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm install failed for the web frontend."
+        }
+    } finally {
+        Pop-Location
+    }
+
+    if (-not (Test-Path $viteCmd)) {
+        throw "Web dependencies were installed, but Vite was not found at $viteCmd."
+    }
+
+    Write-Ok "Web dependencies installed"
 }
 
 function Request-UserConsent {
@@ -299,31 +358,36 @@ function Get-DomainFirewallScope {
             return $null
         }
 
-        if ($computerSystem.DomainRole -notin 4, 5) {
-            Write-Warn "Automatic firewall rule creation assumes WinStride is installed on the domain controller."
+        $domainName = $computerSystem.Domain.Trim()
+        if ([string]::IsNullOrWhiteSpace($domainName)) {
+            Write-Warn "Machine is domain-joined, but the domain name could not be determined."
             return $null
         }
 
         $domainProfiles = Get-NetConnectionProfile -ErrorAction Stop |
             Where-Object { $_.NetworkCategory -eq "DomainAuthenticated" }
 
-        if (-not $domainProfiles) {
+        if ($domainProfiles) {
+            $aliases = $domainProfiles.InterfaceAlias | Sort-Object -Unique
+            if ($aliases) {
+                Write-Info "Domain-authenticated network detected on: $($aliases -join ', ')"
+            }
+        } else {
             Write-Warn "No active DomainAuthenticated network profile was detected."
-            return $null
+            Write-Info "Continuing because the machine is domain-joined; firewall scope will be built from Active Directory computer IPs."
         }
 
-        $aliases = $domainProfiles.InterfaceAlias | Sort-Object -Unique
-        if ($aliases) {
-            Write-Info "Domain-authenticated network detected on: $($aliases -join ', ')"
+        if ($computerSystem.DomainRole -notin 4, 5) {
+            Write-Info "Machine is not a domain controller. Querying Active Directory from this domain-joined host."
         }
 
-        $remoteAddresses = Get-DomainComputerIpAddresses -DomainName $computerSystem.Domain.Trim()
+        $remoteAddresses = Get-DomainComputerIpAddresses -DomainName $domainName
         Write-Info "Resolved $($remoteAddresses.Count) domain computer IPv4 address(es) from Active Directory."
 
         return @{
             Profile = "Domain"
             RemoteAddresses = $remoteAddresses
-            DomainName = $computerSystem.Domain.Trim()
+            DomainName = $domainName
         }
     } catch {
         Write-Warn "Failed to detect domain firewall scope automatically: $($_.Exception.Message)"
@@ -455,12 +519,11 @@ if (-not $SkipPrerequisiteCheck) {
     $nodeOk = $false
     if (Test-Command "node") {
         $nodeVersion = & node --version 2>&1
-        $nodeMajor = [int]($nodeVersion -replace 'v(\d+)\..*', '$1')
-        if ($nodeMajor -ge 18) {
+        if (Test-SupportedNodeVersion -VersionText $nodeVersion) {
             Write-Ok "Node.js $nodeVersion"
             $nodeOk = $true
         } else {
-            Write-Warn "Node.js $nodeVersion is too old (need 18+)."
+            Write-Warn "Node.js $nodeVersion is not supported (need 20.19+ or 22.12+)."
         }
     } else {
         Write-Warn "Node.js not found."
@@ -489,11 +552,18 @@ if (-not $SkipPrerequisiteCheck) {
     }
 
     # npm (comes with Node.js)
-    if (Test-Command "npm") {
-        $npmVersion = & npm --version 2>&1
+    if (Test-Command "npm.cmd") {
+        $npmVersion = & npm.cmd --version 2>&1
         Write-Ok "npm v$npmVersion"
     } else {
         Write-Err "npm not found (should come with Node.js). Restart your terminal and try again."
+        exit 1
+    }
+
+    try {
+        Install-WebDependencies -WebDirectory $webDir
+    } catch {
+        Write-Err $_.Exception.Message
         exit 1
     }
 } else {
@@ -538,7 +608,7 @@ Write-Host "================================================================" -F
 Write-Host "  WINSTRIDE SETUP COMPLETE" -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Prerequisites installed. Database is SQLite (zero config)." -ForegroundColor White
+Write-Host "  Prerequisites and web dependencies installed. Database is SQLite (zero config)." -ForegroundColor White
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Yellow
 Write-Host "    1. (Optional) Run TLS setup:" -ForegroundColor Yellow

@@ -133,7 +133,16 @@ public class AgentWorker : BackgroundService
 
     private async Task StartHeartbeatLoop(CancellationToken ct)
     {
-        string heartbeatUrl = _baseUrl.Replace("/Event", "/Heartbeat");
+        string heartbeatUrl;
+        if (_baseUrl.EndsWith("/Event", StringComparison.OrdinalIgnoreCase))
+        {
+            heartbeatUrl = _baseUrl.Substring(0, _baseUrl.LastIndexOf("/Event", StringComparison.OrdinalIgnoreCase)) + "/Heartbeat";
+        }
+        else
+        {
+            heartbeatUrl = $"{_baseUrl.TrimEnd('/')}/Heartbeat";
+        }
+
         while (!ct.IsCancellationRequested)
         {
             try
@@ -144,8 +153,18 @@ public class AgentWorker : BackgroundService
                     ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver()
                 });
 
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                await _client.PostAsync(heartbeatUrl, content, ct);
+                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                HttpResponseMessage response = await _client.PostAsync(heartbeatUrl, content, ct);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Logger.WriteLine($"[Heartbeat] Success -> {heartbeatUrl}");
+                }
+                else
+                {
+                    string errorDetails = await response.Content.ReadAsStringAsync(ct);
+                    Logger.WriteLine($"[Heartbeat] API Error ({(int)response.StatusCode} {response.StatusCode}): {errorDetails}");
+                }
             }
             catch (Exception ex) when (!(ex is OperationCanceledException))
             {
