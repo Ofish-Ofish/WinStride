@@ -1,7 +1,7 @@
 global:
   baseUrl: "http://localhost:5090/api/Event"
   certSubject: ""
-  batchSize: 100
+  batchSize: 500
   heartbeatInterval: 60
   maxLogSizeMb: 5
   recoverdelayMs: 30000
@@ -12,16 +12,16 @@ logs:
     minLevel: Verbose
     includeIds: [1102, 4624, 4625, 4648, 4662, 4698, 4672, 4720, 4726, 4732, 4733, 4738, 4768, 4769, 4776, 4688, 5379]
     excludeIds: []
-    maxBacklogDays: 7
+    maxBacklogDays: null
   Microsoft-Windows-PowerShell/Operational:
     enabled: true
     minLevel: Verbose
     includeIds: [4103, 4104]
     excludeIds: []
-    maxBacklogDays: 7
+    maxBacklogDays: null
   Microsoft-Windows-Sysmon/Operational:
     enabled: true
     minLevel: Verbose
     includeIds: [1, 3, 11]
     excludeIds: []
-    maxBacklogDays: 7
+    maxBacklogDays: null

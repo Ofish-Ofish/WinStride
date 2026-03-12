@@ -338,6 +338,23 @@ try {
     exit 1
 }
 
+# Import the client cert into LocalMachine\My so the local Windows service can use it.
+$serviceClientCert = Get-ChildItem Cert:\LocalMachine\My |
+    Where-Object { $_.Thumbprint -eq $clientCert.Thumbprint } |
+    Select-Object -First 1
+
+if ($serviceClientCert) {
+    Write-Warn "Client cert already exists in LocalMachine\My"
+} else {
+    try {
+        Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\LocalMachine\My -Password $pfxPassword -Exportable -ErrorAction Stop | Out-Null
+        Write-Ok "Client cert imported into LocalMachine\My for the local WinStrideAgent service"
+    } catch {
+        Write-Err "Failed to import client certificate into LocalMachine\My: $_"
+        exit 1
+    }
+}
+
 # Save password to a file (user should delete after distribution)
 $pwdFilePath = Join-Path $ExportPath "$ClientName-password.txt"
 Set-Content $pwdFilePath -Value $pfxPasswordPlain -Encoding UTF8
@@ -405,8 +422,11 @@ Write-Host "  Client PFX             : $pfxPath" -ForegroundColor White
 Write-Host "  PFX password file      : $pwdFilePath" -ForegroundColor White
 Write-Host ""
 Write-Host "  Next steps for remote agents:" -ForegroundColor Yellow
-Write-Host "    1. Copy '$pfxPath' and 'setup-agent.ps1' to each agent machine" -ForegroundColor Yellow
-Write-Host "    2. Run: .\setup-agent.ps1 -PfxPath '$ClientName.pfx' -ServerIP '<this-machine-ip>'" -ForegroundColor Yellow
-Write-Host "    3. Delete the password file after distribution" -ForegroundColor Yellow
+Write-Host "    1. Copy '$pfxPath' and 'install-run-agent.ps1' to each agent machine" -ForegroundColor Yellow
+Write-Host "    2. If the agent machine is domain joined and WinStride runs on the domain controller, run:" -ForegroundColor Yellow
+Write-Host "       powershell -ExecutionPolicy Bypass -File .\install-run-agent.ps1 -UseHttps -PfxPath '$ClientName.pfx'" -ForegroundColor White
+Write-Host "    3. Otherwise specify the WinStride server explicitly:" -ForegroundColor Yellow
+Write-Host "       powershell -ExecutionPolicy Bypass -File .\install-run-agent.ps1 -UseHttps -PfxPath '$ClientName.pfx' -ServerAddress '<this-machine-ip-or-hostname>'" -ForegroundColor White
+Write-Host "    4. Delete the password file after distribution" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Cyan

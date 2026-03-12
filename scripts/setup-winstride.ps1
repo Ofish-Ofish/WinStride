@@ -1,9 +1,9 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Sets up the WinStride environment from scratch - installs prerequisites,
-    builds the API, Agent, and Web frontend. Database is SQLite (zero config).
-    Run this before setup-certs.ps1.
+    Sets up the WinStride environment from scratch - installs prerequisites
+    and validates the repo layout for the service-based install flow.
+    Database is SQLite (zero config). Run this before setup-certs.ps1.
 
 .PARAMETER SkipPrerequisiteCheck
     Skip checking for .NET SDK and Node.js.
@@ -149,11 +149,158 @@ function Get-ApiPortConfig {
     }
 }
 
+function Get-DomainComputerEntries {
+    param([string]$DomainName)
+
+    $entries = New-Object System.Collections.Generic.List[object]
+
+    if (Get-Command Get-ADComputer -ErrorAction SilentlyContinue) {
+        try {
+            Import-Module ActiveDirectory -ErrorAction Stop
+            $computers = Get-ADComputer -Filter * -Properties DNSHostName, IPv4Address, Enabled -ErrorAction Stop |
+                Where-Object { $_.Enabled }
+
+            foreach ($computer in $computers) {
+                $hostName = if (-not [string]::IsNullOrWhiteSpace($computer.DNSHostName)) {
+                    $computer.DNSHostName.Trim()
+                } else {
+                    "$($computer.Name).$DomainName"
+                }
+
+                $entries.Add([pscustomobject]@{
+                    HostName = $hostName
+                    IPv4Address = $computer.IPv4Address
+                })
+            }
+
+            return $entries
+        } catch {
+            Write-Warn "ActiveDirectory module lookup failed: $($_.Exception.Message)"
+        }
+    }
+
+    try {
+        Add-Type -AssemblyName System.DirectoryServices -ErrorAction Stop
+        $rootDse = [ADSI]"LDAP://RootDSE"
+        $defaultNamingContext = [string]$rootDse.defaultNamingContext
+        if ([string]::IsNullOrWhiteSpace($defaultNamingContext)) {
+            throw "RootDSE did not return a default naming context."
+        }
+
+        $searcher = New-Object System.DirectoryServices.DirectorySearcher([ADSI]("LDAP://$defaultNamingContext"))
+        $searcher.Filter = "(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+        $searcher.PageSize = 1000
+        [void]$searcher.PropertiesToLoad.Add("dNSHostName")
+        [void]$searcher.PropertiesToLoad.Add("name")
+
+        foreach ($result in $searcher.FindAll()) {
+            $dnsHostName = if ($result.Properties["dnshostname"].Count -gt 0) {
+                [string]$result.Properties["dnshostname"][0]
+            } elseif ($result.Properties["name"].Count -gt 0) {
+                "$([string]$result.Properties["name"][0]).$DomainName"
+            } else {
+                ""
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($dnsHostName)) {
+                $entries.Add([pscustomobject]@{
+                    HostName = $dnsHostName.Trim()
+                    IPv4Address = ""
+                })
+            }
+        }
+
+        return $entries
+    } catch {
+        throw "Failed to enumerate domain computer objects: $($_.Exception.Message)"
+    }
+}
+
+function Resolve-HostToIPv4Addresses {
+    param([string]$HostName)
+
+    $resolvedIps = New-Object System.Collections.Generic.List[string]
+
+    if (Get-Command Resolve-DnsName -ErrorAction SilentlyContinue) {
+        try {
+            $dnsResults = Resolve-DnsName -Name $HostName -Type A -ErrorAction Stop
+            foreach ($result in $dnsResults) {
+                if (-not [string]::IsNullOrWhiteSpace($result.IPAddress)) {
+                    $resolvedIps.Add($result.IPAddress)
+                }
+            }
+        } catch {
+        }
+    }
+
+    if ($resolvedIps.Count -eq 0) {
+        try {
+            foreach ($address in [System.Net.Dns]::GetHostAddresses($HostName)) {
+                if ($address.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork) {
+                    $resolvedIps.Add($address.IPAddressToString)
+                }
+            }
+        } catch {
+        }
+    }
+
+    return $resolvedIps |
+        Where-Object { $_ -and $_ -notlike "127.*" -and $_ -ne "0.0.0.0" } |
+        Sort-Object -Unique
+}
+
+function Get-DomainComputerIpAddresses {
+    param([string]$DomainName)
+
+    $computerEntries = Get-DomainComputerEntries -DomainName $DomainName
+    if (-not $computerEntries -or $computerEntries.Count -eq 0) {
+        throw "No enabled computer objects were found in Active Directory."
+    }
+
+    $ipAddresses = New-Object System.Collections.Generic.List[string]
+    $unresolvedCount = 0
+
+    foreach ($entry in $computerEntries) {
+        if (-not [string]::IsNullOrWhiteSpace($entry.IPv4Address)) {
+            $ipAddresses.Add($entry.IPv4Address.Trim())
+            continue
+        }
+
+        $resolvedForHost = Resolve-HostToIPv4Addresses -HostName $entry.HostName
+        if ($resolvedForHost -and $resolvedForHost.Count -gt 0) {
+            foreach ($ip in $resolvedForHost) {
+                $ipAddresses.Add($ip)
+            }
+        } else {
+            $unresolvedCount++
+        }
+    }
+
+    $uniqueAddresses = $ipAddresses |
+        Where-Object { $_ -and $_ -match '^\d{1,3}(\.\d{1,3}){3}$' } |
+        Sort-Object -Unique
+
+    if (-not $uniqueAddresses -or $uniqueAddresses.Count -eq 0) {
+        throw "No IPv4 addresses could be resolved for enabled domain computer objects."
+    }
+
+    if ($unresolvedCount -gt 0) {
+        Write-Warn "Skipped $unresolvedCount domain computer object(s) that could not be resolved to IPv4 addresses."
+    }
+
+    return $uniqueAddresses
+}
+
 function Get-DomainFirewallScope {
     try {
         $computerSystem = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
         if (-not $computerSystem.PartOfDomain) {
             Write-Warn "Machine is not joined to an Active Directory domain."
+            return $null
+        }
+
+        if ($computerSystem.DomainRole -notin 4, 5) {
+            Write-Warn "Automatic firewall rule creation assumes WinStride is installed on the domain controller."
             return $null
         }
 
@@ -170,13 +317,52 @@ function Get-DomainFirewallScope {
             Write-Info "Domain-authenticated network detected on: $($aliases -join ', ')"
         }
 
+        $remoteAddresses = Get-DomainComputerIpAddresses -DomainName $computerSystem.Domain.Trim()
+        Write-Info "Resolved $($remoteAddresses.Count) domain computer IPv4 address(es) from Active Directory."
+
         return @{
             Profile = "Domain"
-            RemoteAddress = "LocalSubnet"
+            RemoteAddresses = $remoteAddresses
+            DomainName = $computerSystem.Domain.Trim()
         }
     } catch {
         Write-Warn "Failed to detect domain firewall scope automatically: $($_.Exception.Message)"
         return $null
+    }
+}
+
+function Set-WinStrideFirewallRules {
+    param(
+        [int[]]$Ports,
+        [hashtable]$FirewallScope
+    )
+
+    $uniquePorts = $Ports | Sort-Object -Unique
+    $remoteAddresses = $FirewallScope.RemoteAddresses | Sort-Object -Unique
+    if (-not $remoteAddresses -or $remoteAddresses.Count -eq 0) {
+        throw "Remote address list is empty."
+    }
+
+    foreach ($port in $uniquePorts) {
+        $ruleName = "WinStride API TCP $port"
+        $existingRule = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+        if ($existingRule) {
+            $existingRule | Remove-NetFirewallRule -ErrorAction Stop
+        }
+
+        New-NetFirewallRule `
+            -DisplayName $ruleName `
+            -Direction Inbound `
+            -Action Allow `
+            -Enabled True `
+            -Profile $FirewallScope.Profile `
+            -Protocol TCP `
+            -LocalPort $port `
+            -RemoteAddress $remoteAddresses `
+            -Description "Allow WinStride API from Active Directory computer IPs." `
+            -ErrorAction Stop | Out-Null
+
+        Write-Ok "Created firewall rule '$ruleName' for $($remoteAddresses.Count) domain computer IP(s)"
     }
 }
 
@@ -186,6 +372,7 @@ function Write-ManualFirewallCommands {
     Write-Info "Use one of the following commands with the exact allowed domain member IPs or CIDRs:"
     foreach ($port in ($Ports | Sort-Object -Unique)) {
         Write-Host "       New-NetFirewallRule -DisplayName 'WinStride API TCP $port' -Direction Inbound -Action Allow -Enabled True -Profile Domain -Protocol TCP -LocalPort $port -RemoteAddress '10.0.0.10,10.0.0.11,10.0.1.0/24'" -ForegroundColor White
+        Write-Host "       Get-NetFirewallRule -DisplayName 'WinStride API TCP $port' | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress @('10.0.0.10','10.0.0.11','10.0.1.0/24')" -ForegroundColor White
     }
 }
 
@@ -328,13 +515,17 @@ if (Request-UserConsent "    Open Windows Firewall for WinStride API port(s): $p
 
     $firewallScope = Get-DomainFirewallScope
     if ($null -eq $firewallScope) {
-        Write-Warn "Skipping automatic firewall rule creation."
+        Write-Warn "Automatic firewall rule creation was skipped."
         Write-Warn "A domain-member-only allow rule needs an explicit IP/CIDR allow list in this setup."
         Write-ManualFirewallCommands -Ports $portsToOpen
     } else {
-        Write-Warn "Automatic firewall rules were not created."
-        Write-Warn "Windows Firewall cannot safely infer the exact domain-member IP allow list from Active Directory."
-        Write-ManualFirewallCommands -Ports $portsToOpen
+        try {
+            Set-WinStrideFirewallRules -Ports $portsToOpen -FirewallScope $firewallScope
+            Write-Ok "Windows Firewall rules created from Active Directory computer IPs."
+        } catch {
+            Write-Warn "Automatic firewall rule creation failed: $($_.Exception.Message)"
+            Write-ManualFirewallCommands -Ports $portsToOpen
+        }
     }
 } else {
     Write-Info "Skipping Windows Firewall changes."
@@ -351,14 +542,19 @@ Write-Host "  Prerequisites installed. Database is SQLite (zero config)." -Foreg
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Yellow
 Write-Host "    1. (Optional) Run TLS setup:" -ForegroundColor Yellow
-Write-Host "       .\scripts\setup-certs.ps1 -CAName `"YourCA`"" -ForegroundColor White
+Write-Host "       powershell -ExecutionPolicy Bypass -File .\scripts\setup-certs.ps1 -CAName `"YourCA`"" -ForegroundColor White
 Write-Host ""
-Write-Host "    2. Start everything:" -ForegroundColor Yellow
-Write-Host "       .\scripts\start-winstride.ps1" -ForegroundColor White
+Write-Host "    2. Install/update and start the API + agent services:" -ForegroundColor Yellow
+Write-Host "       powershell -ExecutionPolicy Bypass -File .\scripts\start-winstride.ps1" -ForegroundColor White
 Write-Host ""
-Write-Host "    3. Agent-only install/run on another Windows machine:" -ForegroundColor Yellow
-Write-Host "       .\scripts\install-run-agent.ps1" -ForegroundColor White
+Write-Host "       Developer mode still exists if you want dotnet run windows:" -ForegroundColor Gray
+Write-Host "       powershell -ExecutionPolicy Bypass -File .\scripts\start-winstride.ps1 -DevMode" -ForegroundColor White
 Write-Host ""
-Write-Host "  First start will download packages and build automatically." -ForegroundColor Gray
+Write-Host "    3. Agent-only install on another Windows machine:" -ForegroundColor Yellow
+Write-Host "       powershell -ExecutionPolicy Bypass -File .\scripts\install-run-agent.ps1" -ForegroundColor White
+Write-Host "       Domain-joined agents assume WinStride is on the domain controller." -ForegroundColor Gray
+Write-Host "       If that is not true, rerun with -ServerAddress '<api-hostname-or-ip>'." -ForegroundColor Gray
+Write-Host ""
+Write-Host "  The start script now publishes repo-based service runtimes under deploy\services." -ForegroundColor Gray
 Write-Host ""
 Write-Host "================================================================" -ForegroundColor Cyan
