@@ -13,6 +13,8 @@ using WinStrideApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Host.UseWindowsService();
+
 var serverCertThumbprint = builder.Configuration["ServerCertThumbprint"];
 var tlsEnabled = !string.IsNullOrWhiteSpace(serverCertThumbprint);
 var httpPort = builder.Configuration.GetValue("HttpPort", 5090);

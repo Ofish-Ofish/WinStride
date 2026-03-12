@@ -5,151 +5,78 @@ using System.Text;
 using WinStrideAgent.Services;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
-using System.Net.Http;
-class Agent
-{
-    private static HttpClient client = null!;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 
-    static async Task Main()
+class Program
+{
+    static async Task Main(string[] args)
+    {
+        var builder = Host.CreateApplicationBuilder(args);
+
+        builder.Services.AddWindowsService(options =>
+        {
+            options.ServiceName = "WinStrideAgent";
+        });
+
+        builder.Services.AddHostedService<AgentWorker>();
+
+        using IHost host = builder.Build();
+        await host.RunAsync();
+    }
+}
+
+public class AgentWorker : BackgroundService
+{
+    private HttpClient _client = null!;
+    private string _baseUrl = null!;
+    private AppConfig _config = null!;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
         {
             var ex = e.ExceptionObject as Exception;
-            Logger.WriteLine($"[FATAL CRASH] Unhandled AppDomain Exception: {ex?.Message}");
+            Logger.WriteLine($"[FATAL CRASH] Unhandled Exception: {ex?.Message}");
             Logger.WriteLine($"[FATAL CRASH] StackTrace: {ex?.StackTrace}");
-            Logger.WriteLine("[FATAL CRASH] --- DEATH CERTIFICATE --- Agent Process Terminated.");
         };
-
-        TaskScheduler.UnobservedTaskException += (sender, e) =>
-        {
-            Logger.WriteLine($"[FATAL CRASH] Unobserved Task Exception: {e.Exception.Message}");
-            Logger.WriteLine($"[FATAL CRASH] StackTrace: {e.Exception.StackTrace}");
-            Logger.WriteLine("[FATAL CRASH] --- DEATH CERTIFICATE --- Background Task Terminated.");
-            e.SetObserved();
-        };
-
-
 
         try
         {
-            string projectRoot = GetSourceDirectory();
-            string configPath = Path.Combine(projectRoot, "config.yaml");
-            AppConfig fullConfig = LoadConfig(configPath);
-
-            if (string.IsNullOrWhiteSpace(fullConfig.Global.BaseUrl))
+            if (!InitializeConfiguration())
             {
-                Logger.WriteLine("[CRITICAL ERROR] 'global.baseUrl' is missing in config.yaml.");
-                Logger.WriteLine("The agent cannot start without a target API destination.");
+                Logger.WriteLine("[FATAL] Configuration failed. Service cannot start.");
                 return;
             }
 
-            string BaseUrl = fullConfig.Global.BaseUrl;
-            if (!Uri.TryCreate(BaseUrl, UriKind.Absolute, out Uri? baseUri) ||
-                (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
-            {
-                Logger.WriteLine($"[CRITICAL ERROR] 'global.baseUrl' is invalid: {BaseUrl}");
-                Logger.WriteLine("Use an absolute http:// or https:// API endpoint in config.yaml.");
-                return;
-            }
-
-            var configuredClient = CreateConfiguredClient(baseUri, fullConfig.Global.CertSubject);
-            if (configuredClient is null)
-            {
-                Logger.WriteLine("The agent cannot start until its HTTPS client certificate is configured correctly.");
-                return;
-            }
-
-            client = configuredClient;
-            int batchSize = fullConfig.Global.BatchSize;
-            Logger.MaxLogSizeMb = fullConfig.Global.MaxLogSizeMb;
-
-            Logger.WriteLine("\n\n\n");
+            Logger.WriteLine("\n\n");
             Logger.WriteLine("================================================================");
-            Logger.WriteLine("                    WinStride Agent Started                     ");
+            Logger.WriteLine("                WinStride Agent Service Running                 ");
             Logger.WriteLine("================================================================");
 
-            int startDelaySeconds = 30;
-
-            await Task.Delay(TimeSpan.FromSeconds(startDelaySeconds));
-
-            _ = StartHeartbeatLoop(BaseUrl, fullConfig.Global.HeartbeatInterval);
-
-            _ = Task.Run(async () =>
+            List<Task> backgroundTasks = new List<Task>
             {
-                try
-                {
-                    Logger.WriteLine("[Network] Background loop starting...");
-                    NetworkService networkService = new NetworkService(BaseUrl, client);
-                    while (true)
-                    {
-                        Guid pulseId = Guid.NewGuid();
-                        await networkService.SyncNetworkData(pulseId);
-                        await Task.Delay(TimeSpan.FromSeconds(10));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.WriteLine($"[FATAL] Network Loop crashed: {ex.Message}");
-                }
-            });
+                StartHeartbeatLoop(stoppingToken),
+                StartNetworkLoop(stoppingToken),
+                StartAutorunLoop(stoppingToken),
+                StartWinProcessLoop(stoppingToken)
+            };
 
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    Logger.WriteLine("[Autorun] Background loop starting...");
-                    AutorunService autorunService = new AutorunService(BaseUrl, client);
-
-                    while (true)
-                    {
-                        Guid pulseId = Guid.NewGuid();
-
-                        Logger.WriteLine($"[Autorun] Starting scan (Pulse: {pulseId})");
-                        await autorunService.SyncAutorunData(pulseId);
-
-                        await Task.Delay(TimeSpan.FromSeconds(120));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.WriteLine($"[FATAL] Autorun Loop crashed: {ex.Message}");
-                }
-            });
-
-
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    Logger.WriteLine("[WinProcesses] Background loop starting...");
-                    WinProcessService processService = new WinProcessService(BaseUrl, client);
-
-                    while (true)
-                    {
-                        Guid pulseId = Guid.NewGuid();
-
-                        Logger.WriteLine($"[WinProcesses] Starting process sync (Pulse: {pulseId})");
-                        await processService.SyncProcessData(pulseId);
-
-                        await Task.Delay(TimeSpan.FromSeconds(10));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.WriteLine($"[FATAL] WinProcesses Loop crashed: {ex.Message}");
-                }
-            });
-
-            List<Task> monitorTasks = new List<Task>();
-
-            foreach (KeyValuePair<string, LogConfig> logEntry in fullConfig.Logs)
+            foreach (KeyValuePair<string, LogConfig> logEntry in _config.Logs)
             {
                 if (!logEntry.Value.Enabled) continue;
 
                 try
                 {
-                    LogMonitor monitor = new LogMonitor(logEntry.Key, logEntry.Value, client, BaseUrl, batchSize, fullConfig.Global.recoverdelayMs);
-                    monitorTasks.Add(monitor.StartAsync());
+                    LogMonitor monitor = new LogMonitor(
+                        logEntry.Key,
+                        logEntry.Value,
+                        _client,
+                        _baseUrl,
+                        _config.Global.BatchSize,
+                        _config.Global.recoverdelayMs);
+
+                    backgroundTasks.Add(monitor.StartAsync());
                 }
                 catch (EventLogNotFoundException)
                 {
@@ -157,138 +84,166 @@ class Agent
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    Logger.WriteLine($"[Error] Access Denied for '{logEntry.Key}'. Please run as Administrator.");
+                    Logger.WriteLine($"[Error] Access Denied for '{logEntry.Key}'. Service usually runs as LocalSystem.");
                 }
             }
 
-            if (monitorTasks.Count == 0)
-            {
-                Logger.WriteLine("No valid logs to monitor. Exiting.");
-                return;
-            }
-
-            await Task.WhenAll(monitorTasks);
-            Logger.WriteLine("All monitors are active.");
-            await Task.Delay(-1);
+            await Task.WhenAll(backgroundTasks);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.WriteLine("[Service] Shutdown requested. Cleaning up...");
         }
         catch (Exception ex)
         {
-            Logger.WriteLine($"[FATAL CRASH] Main thread exception: {ex.Message}");
-            Logger.WriteLine($"[FATAL CRASH] StackTrace: {ex.StackTrace}");
-            Logger.WriteLine("[FATAL CRASH] --- DEATH CERTIFICATE --- Agent Process Terminated.");
+            Logger.WriteLine($"[FATAL CRASH] Main Service Error: {ex.Message}");
+            Logger.WriteLine($"[StackTrace] {ex.StackTrace}");
         }
     }
 
-    private static AppConfig LoadConfig(string filePath)
+    private bool InitializeConfiguration()
+    {
+        string baseDir = AppContext.BaseDirectory;
+        string configPath = Path.Combine(baseDir, "config.yaml");
+
+        _config = LoadConfig(configPath);
+
+        if (string.IsNullOrWhiteSpace(_config.Global.BaseUrl))
+        {
+            Logger.WriteLine("[CRITICAL ERROR] 'global.baseUrl' is missing in config.yaml.");
+            return false;
+        }
+
+        _baseUrl = _config.Global.BaseUrl;
+        if (!Uri.TryCreate(_baseUrl, UriKind.Absolute, out Uri? baseUri) ||
+            (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
+        {
+            Logger.WriteLine($"[CRITICAL ERROR] 'global.baseUrl' is invalid: {_baseUrl}");
+            return false;
+        }
+
+        var configuredClient = CreateConfiguredClient(baseUri, _config.Global.CertSubject);
+        if (configuredClient is null) return false;
+
+        _client = configuredClient;
+        Logger.MaxLogSizeMb = _config.Global.MaxLogSizeMb;
+
+        return true;
+    }
+
+    private async Task StartHeartbeatLoop(CancellationToken ct)
+    {
+        string heartbeatUrl = _baseUrl.Replace("/Event", "/Heartbeat");
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var pulse = new { MachineName = Environment.MachineName, LastSeen = DateTime.UtcNow, IsAlive = true };
+                string json = JsonConvert.SerializeObject(pulse, new JsonSerializerSettings
+                {
+                    ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver()
+                });
+
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                await _client.PostAsync(heartbeatUrl, content, ct);
+            }
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                Logger.WriteLine($"[Heartbeat] failure: {ex.Message}");
+            }
+            await Task.Delay(TimeSpan.FromSeconds(_config.Global.HeartbeatInterval), ct);
+        }
+    }
+
+    private async Task StartNetworkLoop(CancellationToken ct)
+    {
+        NetworkService networkService = new NetworkService(_baseUrl, _client);
+        while (!ct.IsCancellationRequested)
+        {
+            try { await networkService.SyncNetworkData(Guid.NewGuid()); }
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                Logger.WriteLine($"[Network] Error: {ex.Message}");
+            }
+            await Task.Delay(TimeSpan.FromSeconds(10), ct);
+        }
+    }
+
+    private async Task StartAutorunLoop(CancellationToken ct)
+    {
+        AutorunService autorunService = new AutorunService(_baseUrl, _client);
+        while (!ct.IsCancellationRequested)
+        {
+            try { await autorunService.SyncAutorunData(Guid.NewGuid()); }
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                Logger.WriteLine($"[Autorun] Error: {ex.Message}");
+            }
+            await Task.Delay(TimeSpan.FromSeconds(120), ct);
+        }
+    }
+
+    private async Task StartWinProcessLoop(CancellationToken ct)
+    {
+        WinProcessService processService = new WinProcessService(_baseUrl, _client);
+        while (!ct.IsCancellationRequested)
+        {
+            try { await processService.SyncProcessData(Guid.NewGuid()); }
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                Logger.WriteLine($"[WinProcesses] Error: {ex.Message}");
+            }
+            await Task.Delay(TimeSpan.FromSeconds(10), ct);
+        }
+    }
+
+    private AppConfig LoadConfig(string filePath)
     {
         try
         {
-            if (!File.Exists(filePath))
-            {
-                return new AppConfig();
-            }
-
+            if (!File.Exists(filePath)) return new AppConfig();
             string yamlContent = File.ReadAllText(filePath);
             var deserializer = new DeserializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .Build();
-
-            var config = deserializer.Deserialize<AppConfig>(yamlContent);
-
-            return config ?? new AppConfig();
+            return deserializer.Deserialize<AppConfig>(yamlContent) ?? new AppConfig();
         }
         catch (Exception ex)
         {
             Logger.WriteLine($"[Error] Failed to parse YAML: {ex.Message}");
             return new AppConfig();
         }
-
     }
 
-    private static string GetSourceDirectory([System.Runtime.CompilerServices.CallerFilePath] string sourceFilePath = "")
-    {
-        return System.IO.Path.GetDirectoryName(sourceFilePath) ?? string.Empty;
-    }
-
-    private static async Task StartHeartbeatLoop(string baseUrl, int intervalSeconds)
-    {
-        string heartbeatUrl = baseUrl.Replace("/Event", "/Heartbeat");
-
-        while (true)
-        {
-            try
-            {
-                Heartbeat pulse = new Heartbeat
-                {
-                    MachineName = Environment.MachineName,
-                    LastSeen = DateTime.UtcNow,
-                    IsAlive = true
-                };
-
-                var settings = new JsonSerializerSettings
-                {
-                    ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver()
-                };
-
-                string json = JsonConvert.SerializeObject(pulse, settings);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-
-                HttpResponseMessage response = await client.PostAsync(heartbeatUrl, content);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    string error = await response.Content.ReadAsStringAsync();
-                    Logger.WriteLine($"[Heartbeat] Warning: {response.StatusCode} - {error}");
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.WriteLine($"[Heartbeat] Network failure: {ex.Message}");
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(intervalSeconds));
-        }
-    }
-
-    private static HttpClient? CreateConfiguredClient(Uri baseUri, string? certSubject)
+    private HttpClient? CreateConfiguredClient(Uri baseUri, string? certSubject)
     {
         if (!string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
         {
-            Logger.WriteLine("[Auth] HTTP mode detected. Skipping client certificate load.");
             return new HttpClient();
         }
 
-        if (string.IsNullOrWhiteSpace(certSubject))
-        {
-            Logger.WriteLine("[CRITICAL] HTTPS mode requires global.certSubject in config.yaml.");
-            return null;
-        }
+        if (string.IsNullOrWhiteSpace(certSubject)) return null;
 
         HttpClientHandler handler = new HttpClientHandler();
         string thumbprint = certSubject.Replace(" ", string.Empty).Trim();
 
-        using (X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser))
+        // Note: For Windows Services running as LocalSystem, use StoreLocation.LocalMachine
+        using (X509Store store = new X509Store(StoreName.My, StoreLocation.LocalMachine))
         {
             store.Open(OpenFlags.ReadOnly);
-
-            X509Certificate2Collection certs = store.Certificates.Find(
-                X509FindType.FindByThumbprint,
-                thumbprint,
-                validOnly: false); 
+            X509Certificate2Collection certs = store.Certificates.Find(X509FindType.FindByThumbprint, thumbprint, false);
 
             if (certs.Count > 0)
             {
                 handler.ClientCertificates.Add(certs[0]);
-                Logger.WriteLine($"[Auth] Successfully loaded cert: {certs[0].Thumbprint}");
+                Logger.WriteLine($"[Auth] Loaded cert: {certs[0].Thumbprint}");
             }
             else
             {
-                Logger.WriteLine($"[CRITICAL] Certificate NOT FOUND in Store! Searched for Thumbprint: {thumbprint}");
+                Logger.WriteLine($"[CRITICAL] Cert NOT FOUND in LocalMachine Store! Thumbprint: {thumbprint}");
                 return null;
             }
         }
-
         return new HttpClient(handler);
     }
 }
