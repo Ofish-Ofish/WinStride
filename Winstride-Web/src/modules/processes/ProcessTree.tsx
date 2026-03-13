@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import type { WinProcess } from './shared/types';
-import { buildProcessTree, flattenTree, formatMemory, isSystemProcess, type ProcessTreeNode } from './shared/treeBuilder';
+import { buildProcessTree, flattenTree, formatMemory, isTrustedSystemProcess, type ProcessTreeNode } from './shared/treeBuilder';
+import { getVerificationBadge, isNonVerifiedStatus } from './shared/verification';
 import { ToolbarButton } from '../../components/list/VirtualizedEventList';
 import ProcessDetailPanel from './ProcessDetailPanel';
 import SidePanel from '../../components/layout/SidePanel';
@@ -58,11 +59,13 @@ function TreeRow({
   hasChildren: boolean;
 }) {
   const p = node.process;
-  const isSys = isSystemProcess(p.imageName);
+  const isSys = isTrustedSystemProcess(p);
   const mem = formatMemory(p.workingSetSize);
   const memMb = p.workingSetSize / (1024 * 1024);
   const memColor = memMb >= 500 ? 'text-[#ff7b72]' : memMb >= 100 ? 'text-[#f0a050]' : memMb >= 50 ? 'text-[#56d364]' : 'text-white';
   const isPowerShell = /^(powershell|pwsh)\.exe$/i.test(p.imageName);
+  const verification = getVerificationBadge(p.verificationStatus);
+  const showVerificationBadge = isNonVerifiedStatus(p.verificationStatus);
 
   return (
     <div
@@ -97,6 +100,15 @@ function TreeRow({
         {p.imageName}
       </span>
 
+      {showVerificationBadge && (
+        <span
+          title={p.verificationStatus ?? 'Verification status unavailable'}
+          className={`mr-3 flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${verification.className}`}
+        >
+          {verification.label}
+        </span>
+      )}
+
       {/* PID */}
       <span className="text-[12px] text-gray-200 tabular-nums w-20 text-right flex-shrink-0 pr-4 font-mono">
         {p.pid}
@@ -122,15 +134,20 @@ function TreeRow({
 export default function ProcessTree({ processes, snapshotTime }: Props) {
   const [expandedPids, setExpandedPids] = useState<Set<number>>(() => new Set());
   const [hideSystem, setHideSystem] = useState(true);
+  const [focusNonVerified, setFocusNonVerified] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedPid, setSelectedPid] = useState<number | null>(null);
 
   const tree = useMemo(() => buildProcessTree(processes), [processes]);
+  const nonVerifiedCount = useMemo(
+    () => processes.filter((process) => isNonVerifiedStatus(process.verificationStatus)).length,
+    [processes],
+  );
 
   const searchLower = search.toLowerCase().trim();
   const visibleRows = useMemo(
-    () => flattenTree(tree, expandedPids, hideSystem, searchLower),
-    [tree, expandedPids, hideSystem, searchLower],
+    () => flattenTree(tree, expandedPids, hideSystem, searchLower, focusNonVerified),
+    [tree, expandedPids, hideSystem, searchLower, focusNonVerified],
   );
 
   const toggleExpand = useCallback((pid: number) => {
@@ -160,10 +177,6 @@ export default function ProcessTree({ processes, snapshotTime }: Props) {
     () => selectedPid != null ? processes.find((p) => p.pid === selectedPid) ?? null : null,
     [processes, selectedPid],
   );
-
-  // Count how many are hidden by system filter
-  const totalCount = processes.length;
-  const hiddenCount = hideSystem ? totalCount - visibleRows.length : 0;
 
   return (
     <div className="flex flex-1 min-h-0">
@@ -196,7 +209,9 @@ export default function ProcessTree({ processes, snapshotTime }: Props) {
           <div className="flex items-center gap-3 ml-auto text-[12px] text-gray-300">
             <span className="tabular-nums">
               {visibleRows.length} process{visibleRows.length !== 1 ? 'es' : ''}
-              {hiddenCount > 0 && <span className="text-gray-500"> ({hiddenCount} system hidden)</span>}
+            </span>
+            <span className="tabular-nums text-gray-500">
+              {nonVerifiedCount} non-verified
             </span>
             {snapshotTime && (
               <span className="text-gray-500">
@@ -209,6 +224,9 @@ export default function ProcessTree({ processes, snapshotTime }: Props) {
           <div className="flex gap-1.5">
             <ToolbarButton onClick={() => setHideSystem((v) => !v)} active={hideSystem}>
               Hide System
+            </ToolbarButton>
+            <ToolbarButton onClick={() => setFocusNonVerified((v) => !v)} active={focusNonVerified}>
+              Focus Non-Verified
             </ToolbarButton>
             <ToolbarButton onClick={expandAll}>
               Expand All

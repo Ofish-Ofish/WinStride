@@ -4,17 +4,13 @@ import { fetchEventsPaged } from '../../api/client';
 import { getDataArray, getDataField } from '../../shared/eventParsing';
 import { Row, SectionLabel, CodeBlock } from '../../components/list/DetailPrimitives';
 import type { WinProcess } from './shared/types';
+import { getVerificationBadge } from './shared/verification';
 import type { WinEvent } from '../security/shared/types';
 import { formatMemory } from './shared/treeBuilder';
 
 interface Props {
   process: WinProcess;
   onClose: () => void;
-}
-
-function basename(path: string): string {
-  const parts = path.replace(/\\/g, '/').split('/');
-  return parts[parts.length - 1] || path;
 }
 
 function parseSysmonMatch(event: WinEvent) {
@@ -77,6 +73,7 @@ function LinkButton({ href, color, children }: { href: string; color: string; ch
 
 export default function ProcessDetailPanel({ process, onClose }: Props) {
   const isPowerShell = /^(powershell|pwsh)\.exe$/i.test(process.imageName);
+  const verification = getVerificationBadge(process.verificationStatus);
 
   // Fetch Sysmon Event 1 matching this PID + machine (server-side filter)
   const { data: sysmonData, isLoading: sysmonLoading } = useQuery({
@@ -138,6 +135,9 @@ export default function ProcessDetailPanel({ process, onClose }: Props) {
             )}
             <span className="bg-[#21262d] px-1.5 py-0.5 rounded text-[11px]">Session {process.sessionId}</span>
             <span className="bg-[#21262d] px-1.5 py-0.5 rounded text-[11px]">{formatMemory(process.workingSetSize)}</span>
+            <span className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${verification.className}`}>
+              {verification.label}
+            </span>
           </div>
         </div>
         <button
@@ -151,6 +151,28 @@ export default function ProcessDetailPanel({ process, onClose }: Props) {
       </div>
 
       <div className="px-4 py-3 space-y-5 flex-1">
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <SectionLabel>Snapshot</SectionLabel>
+          </div>
+          <div className="bg-[#0d1117] rounded-lg border border-[#21262d] overflow-hidden">
+            <div className="px-4 py-2 space-y-0.5">
+              <Row
+                label="Signature"
+                value={
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${verification.className}`}>
+                    {process.verificationStatus ?? 'Unknown'}
+                  </span>
+                }
+              />
+              <Row
+                label="Path"
+                value={<span className="font-mono text-[11px] break-all">{process.path || '-'}</span>}
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Sysmon Section */}
         <div>
           <div className="flex items-center gap-2 mb-3">

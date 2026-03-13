@@ -8,4 +8,6 @@ export interface WinProcess {
   parentPid: number | null;
   sessionId: number;
   workingSetSize: number;
+  path: string | null;
+  verificationStatus: string | null;
 }
