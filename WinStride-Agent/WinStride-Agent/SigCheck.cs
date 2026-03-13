@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Management.Automation;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
 
@@ -10,6 +11,8 @@ namespace WinStrideAgent.Utils
     {
         private static readonly ConcurrentDictionary<string, (string Status, DateTime LastWrite)> _signatureCache
             = new ConcurrentDictionary<string, (string, DateTime)>();
+
+        private const int TRUST_E_NOSIGNATURE = unchecked((int)0x800B0100);
 
         #region Native Windows API (WinTrust)
         private static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
@@ -51,52 +54,66 @@ namespace WinStrideAgent.Utils
 
         public static string GetSignatureStatus(string filePath)
         {
-            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            string normalizedPath = CleanImagePath(filePath);
+            if (string.IsNullOrWhiteSpace(normalizedPath) || !File.Exists(normalizedPath))
                 return "File Not Found";
 
             try
             {
-                string lowerPath = filePath.ToLower();
-                DateTime currentWriteTime = File.GetLastWriteTime(filePath);
-
+                string lowerPath = normalizedPath.ToLowerInvariant();
+                DateTime currentWriteTime = File.GetLastWriteTimeUtc(normalizedPath);
 
                 if (_signatureCache.TryGetValue(lowerPath, out var cached) && cached.LastWrite == currentWriteTime)
                     return cached.Status;
 
-                string status = VerifyWithWinTrust(filePath);
+                string status = VerifySignature(normalizedPath);
 
                 _signatureCache[lowerPath] = (status, currentWriteTime);
                 return status;
             }
-            catch { return "Access Denied"; }
-        }
-
-        private static string VerifyWithWinTrust(string filePath)
-        {
-            bool isTrusted = InternalWinTrustCheck(filePath);
-
-            string signer = "Unknown";
-            try
-            {
-                using (var cert = X509Certificate.CreateFromSignedFile(filePath))
-                {
-                    using (var cert2 = new X509Certificate2(cert))
-                    {
-                        signer = GetCommonName(cert2.Subject);
-                    }
-                }
-            }
             catch
             {
-                if (isTrusted) signer = "Microsoft Windows";
+                return "Access Denied";
+            }
+        }
+
+        private static string VerifySignature(string filePath)
+        {
+            var (isTrusted, signer, errorCode) = VerifyWithWinTrust(filePath);
+            if (isTrusted)
+            {
+                return $"Verified ({signer})";
             }
 
-            if (isTrusted) return $"Verified ({signer})";
+            // Catalog-signed Windows binaries often fail the raw WinVerifyTrust
+            // path above with TRUST_E_NOSIGNATURE. Fall back to Authenticode.
+            if (errorCode == TRUST_E_NOSIGNATURE && TryVerifyWithPowerShell(filePath, out string fallbackStatus))
+            {
+                return fallbackStatus;
+            }
 
             return signer == "Unknown" ? "Unverified (No Signature)" : $"Unverified (Invalid/Expired: {signer})";
         }
 
-        private static bool InternalWinTrustCheck(string filePath)
+        private static (bool IsTrusted, string Signer, int ErrorCode) VerifyWithWinTrust(string filePath)
+        {
+            int result = InvokeWinVerifyTrust(filePath);
+            string signer = GetEmbeddedSigner(filePath);
+
+            if (result == 0)
+            {
+                if (signer == "Unknown")
+                {
+                    signer = "Microsoft Windows";
+                }
+
+                return (true, signer, result);
+            }
+
+            return (false, signer, result);
+        }
+
+        private static int InvokeWinVerifyTrust(string filePath)
         {
             var fileInfo = new WINTRUST_FILE_INFO
             {
@@ -133,10 +150,78 @@ namespace WinStrideAgent.Utils
             Marshal.FreeHGlobal(pFileInfo);
             Marshal.FreeHGlobal(pTrustData);
 
-            return result == 0;
+            return result;
         }
 
-        private static string GetCommonName(string subject)
+        private static string GetEmbeddedSigner(string filePath)
+        {
+            try
+            {
+                using (var cert = X509Certificate.CreateFromSignedFile(filePath))
+                {
+                    using (var cert2 = new X509Certificate2(cert))
+                    {
+                        return GetCommonName(cert2.Subject);
+                    }
+                }
+            }
+            catch
+            {
+                return "Unknown";
+            }
+        }
+
+        private static bool TryVerifyWithPowerShell(string filePath, out string status)
+        {
+            status = string.Empty;
+
+            try
+            {
+                using (PowerShell ps = PowerShell.Create())
+                {
+                    ps.AddCommand("Get-AuthenticodeSignature").AddParameter("FilePath", filePath);
+                    var results = ps.Invoke();
+                    if (ps.HadErrors || results.Count == 0 || results[0].BaseObject is not Signature signature)
+                        return false;
+
+                    status = MapPowerShellSignature(signature);
+                    return true;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static string MapPowerShellSignature(Signature signature)
+        {
+            string signer = GetCommonName(signature.SignerCertificate?.Subject);
+            if (signer == "Unknown" && signature.IsOSBinary)
+            {
+                signer = "Microsoft Windows";
+            }
+
+            switch (signature.Status)
+            {
+                case SignatureStatus.Valid:
+                    return $"Verified ({signer})";
+                case SignatureStatus.NotSigned:
+                    return "Unverified (No Signature)";
+                case SignatureStatus.HashMismatch:
+                    return signer == "Unknown" ? "Unverified (Hash Mismatch)" : $"Unverified (Hash Mismatch: {signer})";
+                case SignatureStatus.NotTrusted:
+                    return signer == "Unknown" ? "Unverified (Not Trusted)" : $"Unverified (Not Trusted: {signer})";
+                case SignatureStatus.NotSupportedFileFormat:
+                    return "Unverified (Unsupported Format)";
+                case SignatureStatus.Incompatible:
+                    return signer == "Unknown" ? "Unverified (Incompatible Signature)" : $"Unverified (Incompatible Signature: {signer})";
+                default:
+                    return signer == "Unknown" ? "Unverified (Unknown Error)" : $"Unverified (Unknown Error: {signer})";
+            }
+        }
+
+        private static string GetCommonName(string? subject)
         {
             if (string.IsNullOrEmpty(subject)) return "Unknown";
             string prefix = "CN=";

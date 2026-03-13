@@ -27,7 +27,7 @@ public class GlobalSettings
     public string? CertSubject { get; set; }
 
     [YamlMember(Alias = "batchSize")]
-    public int BatchSize { get; set; } = 100;
+    public int BatchSize { get; set; } = 500;
 
     [YamlMember(Alias = "heartbeatInterval")]
     public int HeartbeatInterval { get; set; } = 60;

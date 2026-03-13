@@ -410,9 +410,9 @@ public class LogMonitor
             if (node != null && int.TryParse(node.InnerText, out int sysmonPid))
                 pid = sysmonPid;
         }
-        else if (record.LogName == "Microsoft-Windows-PowerShell/Operational" && record.Id == 4104)
+        else if (record.LogName == "Microsoft-Windows-PowerShell/Operational")
         {
-            // PowerShell 4104: record.ProcessId is the PowerShell process PID
+            // PowerShell operational events expose the hosting PowerShell PID here.
             pid = record.ProcessId;
         }
 

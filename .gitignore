@@ -52,5 +52,6 @@ Winstride-Web/docs/
 
 # Agent logs
 agent_logs.txt
+run-logs/
 
 .worktrees/

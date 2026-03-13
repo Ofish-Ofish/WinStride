@@ -51,6 +51,7 @@ $agentDir = Join-Path $projectRoot "WinStride-Agent\WinStride-Agent"
 $agentCsproj = Join-Path $agentDir "WinStride-Agent.csproj"
 $configTemplatePath = Join-Path $agentDir "config.yaml"
 $binariesSourceDir = Join-Path $agentDir "Binaries"
+$autorunsHelperScript = Join-Path $PSScriptRoot "ensure-autoruns.ps1"
 
 $serviceName = "WinStrideAgent"
 $serviceDisplayName = "WinStride Agent"
@@ -63,6 +64,13 @@ function Write-Step { param([string]$Message) Write-Host "`n[*] $Message" -Foreg
 function Write-Ok   { param([string]$Message) Write-Host "    [OK] $Message" -ForegroundColor Green }
 function Write-Warn { param([string]$Message) Write-Host "    [!] $Message" -ForegroundColor Yellow }
 function Write-Err  { param([string]$Message) Write-Host "    [ERROR] $Message" -ForegroundColor Red }
+
+if (-not (Test-Path $autorunsHelperScript)) {
+    Write-Err "Required helper script not found: $autorunsHelperScript"
+    exit 1
+}
+
+. $autorunsHelperScript
 
 function Refresh-ProcessPath {
     $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
@@ -262,6 +270,10 @@ function Publish-Agent {
     param([string]$OutputDir)
 
     Write-Step "Publishing WinStride Agent service"
+
+    if (-not (Ensure-AutorunsBinary -TargetDirectory $binariesSourceDir)) {
+        Write-Warn "Continuing without autorunsc.exe. Autorun collection will stay unavailable until the binary can be staged."
+    }
 
     if (-not (Test-Path $OutputDir)) {
         New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null

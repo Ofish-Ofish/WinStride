@@ -43,6 +43,7 @@ $agentCsproj = Join-Path $agentDir "WinStride-Agent.csproj"
 $apiAppSettingsTemplate = Join-Path $apiDir "appsettings.json"
 $agentConfigTemplate = Join-Path $agentDir "config.yaml"
 $agentBinariesSourceDir = Join-Path $agentDir "Binaries"
+$autorunsHelperScript = Join-Path $PSScriptRoot "ensure-autoruns.ps1"
 
 $serviceRoot = Join-Path $projectRoot "deploy\services"
 $apiInstallDir = Join-Path $serviceRoot "WinStride-Api"
@@ -61,6 +62,13 @@ function Write-Step { param([string]$Message) Write-Host "`n[*] $Message" -Foreg
 function Write-Ok   { param([string]$Message) Write-Host "    [OK] $Message" -ForegroundColor Green }
 function Write-Warn { param([string]$Message) Write-Host "    [!] $Message" -ForegroundColor Yellow }
 function Write-Err  { param([string]$Message) Write-Host "    [ERROR] $Message" -ForegroundColor Red }
+
+if (-not (Test-Path $autorunsHelperScript)) {
+    Write-Err "Required helper script not found: $autorunsHelperScript"
+    exit 1
+}
+
+. $autorunsHelperScript
 
 $minimumNode20Version = [version]"20.19.0"
 $minimumNode22Version = [version]"22.12.0"
@@ -348,6 +356,10 @@ if ($DevMode) {
     Write-Ok "API starting on http://localhost:5090"
 
     if (-not $NoAgent) {
+        if (-not (Ensure-AutorunsBinary -TargetDirectory $agentBinariesSourceDir)) {
+            Write-Warn "Continuing without autorunsc.exe. Autorun collection will stay unavailable until the binary can be staged."
+        }
+
         Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$agentDir'; Write-Host 'WinStride Agent (DevMode)' -ForegroundColor Cyan; dotnet run" -Verb RunAs | Out-Null
         Write-Ok "Agent starting in developer mode"
     }
@@ -416,6 +428,10 @@ if (-not $NoAgent) {
     $agentExePath = Join-Path $agentInstallDir "WinStride-Agent.exe"
 
     Write-Step "Installing WinStride Agent service"
+    if (-not (Ensure-AutorunsBinary -TargetDirectory $agentBinariesSourceDir)) {
+        Write-Warn "Continuing without autorunsc.exe. Autorun collection will stay unavailable until the binary can be staged."
+    }
+
     Stop-ServiceIfInstalled -Name $agentServiceName
     Publish-Project -ProjectDirectory $agentDir -ProjectFile $agentCsproj -OutputDir $agentInstallDir -Label "WinStride Agent"
 

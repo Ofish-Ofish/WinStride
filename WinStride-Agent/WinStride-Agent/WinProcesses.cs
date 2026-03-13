@@ -14,6 +14,16 @@ namespace WinStrideAgent.Services
 {
     public class WinProcessService
     {
+        private static readonly HashSet<string> PseudoProcessNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "System",
+            "Registry",
+            "Memory Compression",
+            "System Idle Process",
+            "Secure System",
+            "Idle",
+        };
+
         private readonly string _baseUrl;
         private readonly HttpClient _httpClient;
         private readonly string _machineName;
@@ -103,18 +113,20 @@ namespace WinStrideAgent.Services
 
                             try
                             {
+                                string imageName = parts[2].Trim();
                                 string filePath = parts[1].Trim();
+                                string normalizedPath = SigCheck.CleanImagePath(filePath);
 
                                 WinProcess wp = new WinProcess
                                 {
-                                    Path = filePath,
-                                    ImageName = parts[2].Trim(),
+                                    Path = normalizedPath,
+                                    ImageName = imageName,
                                     ParentPid = int.TryParse(parts[3], out int ppid) ? ppid : 0,
                                     Pid = int.TryParse(parts[4], out int pid) ? pid : 0,
                                     SessionId = int.TryParse(parts[5], out int sid) ? sid : 0,
                                     WorkingSetSize = long.TryParse(parts[6], out long mem) ? mem : 0,
 
-                                    VerificationStatus = SigCheck.GetSignatureStatus(filePath)
+                                    VerificationStatus = ResolveVerificationStatus(imageName, normalizedPath)
                                 };
 
                                 snapshots.Add(wp);
@@ -133,6 +145,16 @@ namespace WinStrideAgent.Services
             }
 
             return snapshots;
+        }
+
+        private static string ResolveVerificationStatus(string imageName, string filePath)
+        {
+            if (!string.IsNullOrWhiteSpace(filePath))
+            {
+                return SigCheck.GetSignatureStatus(filePath);
+            }
+
+            return PseudoProcessNames.Contains(imageName) ? "File Not Found" : "Access Denied";
         }
     }
 }
