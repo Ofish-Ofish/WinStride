@@ -1,13 +1,13 @@
-import type { WinEvent } from '../../security/shared/types';
 import type { ColumnDef } from '../../../shared/listUtils';
 import { PS_EVENT_LABELS } from '../shared/eventMeta';
 import { parseScriptBlock, parseCommandExecution } from '../shared/parsePSEvent';
+import type { PSEnrichedEvent } from '../shared/types';
 
 /* ------------------------------------------------------------------ */
 /*  Column definitions                                                 */
 /* ------------------------------------------------------------------ */
 
-export const COLUMNS: ColumnDef<WinEvent>[] = [
+export const COLUMNS: ColumnDef<PSEnrichedEvent>[] = [
   {
     key: 'severity',
     label: 'Risk',
@@ -27,6 +27,26 @@ export const COLUMNS: ColumnDef<WinEvent>[] = [
     minWidth: 160,
     getValue: (e) => e.eventId,
     searchKeys: ['event', 'id'],
+  },
+  {
+    key: 'process',
+    label: 'Process',
+    defaultVisible: true,
+    sortable: true,
+    flex: 1.6,
+    minWidth: 140,
+    getValue: (e) => e.correlatedProcessName || e.correlatedHostApplication || '',
+    searchKeys: ['proc', 'image', 'exe', 'hostapp'],
+  },
+  {
+    key: 'user',
+    label: 'User',
+    defaultVisible: true,
+    sortable: true,
+    flex: 1.5,
+    minWidth: 130,
+    getValue: (e) => e.correlatedUser,
+    searchKeys: ['account', 'identity'],
   },
   {
     key: 'command',
@@ -55,11 +75,20 @@ export const COLUMNS: ColumnDef<WinEvent>[] = [
     getValue: (e) => {
       if (e.eventId === 4104) {
         const sb = parseScriptBlock(e);
-        return sb?.path ?? '';
+        return sb?.path || e.correlatedProcessPath;
       }
       const cmd = parseCommandExecution(e);
-      return cmd?.scriptName ?? '';
+      return cmd?.scriptName || e.correlatedProcessPath;
     },
+  },
+  {
+    key: 'pid',
+    label: 'PID',
+    defaultVisible: false,
+    sortable: true,
+    flex: 0.9,
+    minWidth: 80,
+    getValue: (e) => e.correlatedPid ?? '',
   },
   {
     key: 'machine',
@@ -86,7 +115,7 @@ export const COLUMNS: ColumnDef<WinEvent>[] = [
 /*  JSON export mapper                                                 */
 /* ------------------------------------------------------------------ */
 
-export function psJsonMapper(e: WinEvent): Record<string, unknown> {
+export function psJsonMapper(e: PSEnrichedEvent): Record<string, unknown> {
   const sb = parseScriptBlock(e);
   const cmd = parseCommandExecution(e);
   return {
@@ -96,7 +125,13 @@ export function psJsonMapper(e: WinEvent): Record<string, unknown> {
     level: e.level,
     machineName: e.machineName,
     timeCreated: e.timeCreated,
+    pid: e.correlatedPid,
+    process: e.correlatedProcessName || e.correlatedHostApplication || null,
+    user: e.correlatedUser || null,
+    processPath: e.correlatedProcessPath || null,
+    commandLine: e.correlatedCommandLine || null,
+    correlationSource: e.correlationSource,
     command: e.eventId === 4104 ? sb?.scriptBlockText?.slice(0, 200) : cmd?.commandName,
-    path: e.eventId === 4104 ? sb?.path : cmd?.scriptName,
+    path: e.eventId === 4104 ? (sb?.path || e.correlatedProcessPath) : (cmd?.scriptName || e.correlatedProcessPath),
   };
 }

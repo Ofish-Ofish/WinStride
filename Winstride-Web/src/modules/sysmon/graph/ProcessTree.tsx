@@ -8,18 +8,21 @@ import { useModuleEvents } from '../../../shared/hooks/useModuleEvents';
 import { parseProcessCreate, parseNetworkConnect, parseFileCreate } from '../shared/parseSysmonEvent';
 import { parseScriptBlock, findSuspiciousKeywords } from '../../powershell/shared/parsePSEvent';
 import { INTEGRITY_COLORS } from '../shared/eventMeta';
-import { getSystemField } from '../../../shared/eventParsing';
 import SysmonFilterPanel from '../SysmonFilterPanel';
 import { buildAggregatedTree, type AggregatedNode, type ScriptCorrelationMap } from './transformSysmon';
 import type { CorrelatedScript } from '../shared/types';
 import { processTreeStyles, processTreeLayout } from './processTreeStyles';
-import type { WinEvent } from '../../security/shared/types';
 import { resolveTriState } from '../../../components/filter/filterPrimitives';
 import { ToolbarButton } from '../../../components/list/VirtualizedEventList';
 import { useSeverityIntegration, SEVERITY_COLORS, SEVERITY_LABELS, maxSeverity, edgeSeverity } from '../../../shared/detection/engine';
 import type { Detection } from '../../../shared/detection/rules';
 import { useCytoscape } from '../../../shared/graph';
 import SidePanel from '../../../components/layout/SidePanel';
+import {
+  buildSysmonProcessIndex,
+  correlatePowerShellToSysmon,
+  getPowerShellPid,
+} from '../../../shared/correlation/powershellSysmon';
 
 /* ------------------------------------------------------------------ */
 /*  Graph-specific defaults: process creation only                     */
@@ -316,19 +319,30 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
     timeEnd: filters.timeEnd,
   }, { enabled: visible });
 
-  /* ---- Build PowerShell PID correlation map ---- */
-  const psCorrelation = useMemo<ScriptCorrelationMap>(() => {
+  const sysmonProcessIndex = useMemo(
+    () => buildSysmonProcessIndex(rawEvents),
+    [rawEvents],
+  );
+
+  /* ---- Build PowerShell -> Sysmon process correlation map ---- */
+  const { psCorrelation, unmatchedPsMachines } = useMemo(() => {
     const map: ScriptCorrelationMap = new Map();
+    const unmatchedMachines = new Set<string>();
+
     for (const event of psEvents) {
       if (event.eventId !== 4104) continue;
       const parsed = parseScriptBlock(event);
       if (!parsed || !parsed.scriptBlockText) continue;
 
-      const pidStr = getSystemField(event, 'Execution_ProcessID');
-      const pid = parseInt(pidStr, 10);
+      const pid = getPowerShellPid(event);
       if (!pid) continue;
 
-      const key = `${pid}:${event.machineName}`;
+      const match = correlatePowerShellToSysmon(event, sysmonProcessIndex);
+      if (!match) {
+        unmatchedMachines.add(event.machineName);
+        continue;
+      }
+
       const script: CorrelatedScript = {
         scriptBlockText: parsed.scriptBlockText,
         scriptBlockId: parsed.scriptBlockId,
@@ -342,44 +356,23 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
         pid,
       };
 
-      const existing = map.get(key);
+      const existing = map.get(match.event.id);
       if (existing) existing.push(script);
-      else map.set(key, [script]);
+      else map.set(match.event.id, [script]);
     }
-    return map;
-  }, [psEvents]);
 
-  /** Detect machine mismatch: PS script blocks exist but from different machines than Sysmon PS processes */
+    return { psCorrelation: map, unmatchedPsMachines: unmatchedMachines };
+  }, [psEvents, sysmonProcessIndex]);
+
+  /** Detect machines where PowerShell script blocks could not be tied to Sysmon Event 1 */
   const psCorrelationHint = useMemo(() => {
-    if (psCorrelation.size === 0) return null;
-
-    // Machines that have PS script blocks
-    const psMachines = new Set<string>();
-    for (const key of psCorrelation.keys()) {
-      psMachines.add(key.split(':').slice(1).join(':'));
+    if (unmatchedPsMachines.size === 0) return null;
+    const machineList = [...unmatchedPsMachines].sort().join(', ');
+    if (psCorrelation.size === 0) {
+      return `No PowerShell script blocks could be tied to a Sysmon process-create event on: ${machineList}`;
     }
-
-    // Machines that have Sysmon powershell.exe processes
-    const sysmonPsMachines = new Set<string>();
-    for (const event of rawEvents) {
-      if (event.eventId !== 1) continue;
-      const proc = parseProcessCreate(event);
-      if (proc && (proc.imageName.toLowerCase() === 'powershell.exe' || proc.imageName.toLowerCase() === 'pwsh.exe')) {
-        sysmonPsMachines.add(event.machineName);
-      }
-    }
-
-    // Check if any Sysmon PS machine has PS script block data
-    const hasOverlap = [...sysmonPsMachines].some((m) => psMachines.has(m));
-    if (hasOverlap) return null;
-
-    if (sysmonPsMachines.size > 0 && psMachines.size > 0) {
-      const sysmonList = [...sysmonPsMachines].join(', ');
-      const psList = [...psMachines].join(', ');
-      return `PowerShell Script Block Logging not available on ${sysmonList}. Script blocks found on: ${psList}`;
-    }
-    return null;
-  }, [psCorrelation, rawEvents]);
+    return `Some PowerShell script blocks could not be tied to a Sysmon process-create event on: ${machineList}`;
+  }, [psCorrelation, unmatchedPsMachines]);
 
   /* ---- Severity integration ---- */
   const { detections: sevDetections, filterBySeverity } = useSeverityIntegration(rawEvents, 'sysmon');
@@ -507,18 +500,19 @@ export default function ProcessTree({ visible }: { visible: boolean }) {
   );
 
   const selectedNode = selected ? selected.data as unknown as AggregatedNode : null;
+  const selectedEventIds = selectedNode?.eventIds ?? null;
 
   const selectedDetections = useMemo(() => {
-    if (!selectedNode?.eventIds) return [];
+    if (!selectedEventIds) return [];
     const seen = new Set<string>();
     const result: Detection[] = [];
-    for (const eid of selectedNode.eventIds) {
+    for (const eid of selectedEventIds) {
       for (const d of sevDetections.byEventId.get(eid) ?? []) {
         if (!seen.has(d.ruleId)) { seen.add(d.ruleId); result.push(d); }
       }
     }
     return result;
-  }, [selectedNode?.eventIds, sevDetections]);
+  }, [selectedEventIds, sevDetections]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">

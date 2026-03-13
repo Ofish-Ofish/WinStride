@@ -1,3 +1,5 @@
+import { parseTimestamp } from './time';
+
 /* ------------------------------------------------------------------ */
 /*  Base item constraint                                               */
 /* ------------------------------------------------------------------ */
@@ -61,16 +63,25 @@ export function nextSortDir(current: SortDir): SortDir {
 
 export function relativeTime(iso: string): string {
   const now = Date.now();
-  const then = new Date(iso).getTime();
+  const then = parseTimestamp(iso).getTime();
+  if (Number.isNaN(then)) return iso;
+
   const diff = now - then;
 
-  if (diff < 0) return 'just now';
+  if (diff < -5_000) {
+    const future = Math.abs(diff);
+    if (future < 60_000) return `in ${Math.ceil(future / 1000)}s`;
+    if (future < 3_600_000) return `in ${Math.ceil(future / 60_000)}m`;
+    if (future < 86_400_000) return `in ${Math.ceil(future / 3_600_000)}h`;
+    if (future < 604_800_000) return `in ${Math.ceil(future / 86_400_000)}d`;
+  }
+  if (diff < 1_000) return 'just now';
   if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`;
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
 
-  const d = new Date(iso);
+  const d = parseTimestamp(iso);
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }

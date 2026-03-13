@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using System;
 using WinStride_Api.Models;
 using WinStrideApi.Models;
 
@@ -19,6 +21,8 @@ namespace WinStrideApi.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            ApplyUtcDateTimeConverters(modelBuilder);
+
             modelBuilder.Entity<WinEvent>(entity =>
             {
                 entity.HasIndex(e => new { e.LogName, e.TimeCreated });
@@ -58,6 +62,38 @@ namespace WinStrideApi.Data
                 entity.HasIndex(e => new { e.MachineName, e.BatchId });
                 entity.HasIndex(e => e.Pid);
             });
+
+            base.OnModelCreating(modelBuilder);
+        }
+
+        private static void ApplyUtcDateTimeConverters(ModelBuilder modelBuilder)
+        {
+            var utcConverter = new ValueConverter<DateTime, DateTime>(
+                value => value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime(),
+                value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
+
+            var nullableUtcConverter = new ValueConverter<DateTime?, DateTime?>(
+                value => value.HasValue
+                    ? (value.Value.Kind == DateTimeKind.Utc ? value.Value : value.Value.ToUniversalTime())
+                    : value,
+                value => value.HasValue
+                    ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+                    : value);
+
+            foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+            {
+                foreach (var property in entityType.GetProperties())
+                {
+                    if (property.ClrType == typeof(DateTime))
+                    {
+                        property.SetValueConverter(utcConverter);
+                    }
+                    else if (property.ClrType == typeof(DateTime?))
+                    {
+                        property.SetValueConverter(nullableUtcConverter);
+                    }
+                }
+            }
         }
     }
 }

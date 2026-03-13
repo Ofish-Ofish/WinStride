@@ -3,6 +3,7 @@ import type { AutorunEntry } from '../modules/autoruns/shared/types';
 import type { Heartbeat } from '../modules/heartbeats/shared/types';
 import type { NetworkConnection } from '../modules/network/shared/types';
 import type { WinProcess } from '../modules/processes/shared/types';
+import { normalizeApiItems } from '../shared/time';
 
 const API_BASE = '/api';
 
@@ -27,8 +28,9 @@ export async function fetchEventsPaged(params?: Record<string, string>): Promise
     const res = await fetch(`${API_BASE}/Event${buildQuery(params)}`, { signal: controller.signal, cache: 'no-store' });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     const json = await res.json();
+    const events = normalizeApiItems<WinEvent>(json.value ?? json);
     return {
-      events: json.value ?? json,
+      events,
       totalCount: json['@odata.count'] ?? null,
     };
   } catch (err) {
@@ -58,8 +60,9 @@ async function fetchOData<T>(url: string, params?: Record<string, string>): Prom
     const res = await fetch(`${url}${buildQuery(params)}`, { signal: controller.signal, cache: 'no-store' });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     const json = await res.json();
+    const items = normalizeApiItems<T>(json.value ?? json);
     return {
-      items: json.value ?? json,
+      items,
       totalCount: json['@odata.count'] ?? null,
     };
   } catch (err) {

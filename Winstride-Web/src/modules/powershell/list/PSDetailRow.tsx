@@ -1,7 +1,7 @@
-import type { WinEvent } from '../../security/shared/types';
 import type { Detection } from '../../../shared/detection/rules';
 import { parseScriptBlock, parseCommandExecution, findSuspiciousKeywords } from '../shared/parsePSEvent';
-import { Row, SectionLabel, CodeBlock, CopyIconButton, DetectionBlock, DetailCard } from '../../../components/list/DetailPrimitives';
+import { Row, SectionLabel, CodeBlock, CopyIconButton, DetectionBlock, DetailCard, Badge } from '../../../components/list/DetailPrimitives';
+import type { PSEnrichedEvent } from '../shared/types';
 
 /* ------------------------------------------------------------------ */
 /*  Highlighted script text                                            */
@@ -34,7 +34,54 @@ function HighlightedScript({ text }: { text: string }) {
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export default function PSDetailRow({ event, detections }: { event: WinEvent; detections?: Detection[] }) {
+function CorrelationBadge({ event }: { event: PSEnrichedEvent }) {
+  if (event.correlationSource === 'none') return null;
+
+  const color = event.correlationSource === 'powershell+sysmon'
+    ? '#56d364'
+    : event.correlationSource === 'sysmon'
+      ? '#58a6ff'
+      : '#f0a050';
+  const label = event.correlationSource === 'powershell+sysmon'
+    ? 'PowerShell + Sysmon'
+    : event.correlationSource === 'sysmon'
+      ? 'Sysmon Correlated'
+      : 'PowerShell Context';
+
+  return <Badge color={color}>{label}</Badge>;
+}
+
+function CorrelatedProcessSection({ event }: { event: PSEnrichedEvent }) {
+  if (
+    event.correlatedPid == null &&
+    !event.correlatedProcessName &&
+    !event.correlatedUser &&
+    !event.correlatedCommandLine &&
+    !event.correlatedHostApplication
+  ) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4">
+      <SectionLabel>Process Context</SectionLabel>
+      <Row label="PID" value={event.correlatedPid != null ? String(event.correlatedPid) : ''} mono />
+      <Row label="Process" value={event.correlatedProcessName || event.correlatedHostApplication} />
+      <Row label="Host App" value={event.correlatedHostApplication} mono />
+      <Row label="User" value={event.correlatedUser} />
+      <Row label="Path" value={event.correlatedProcessPath} mono />
+      <Row label="Command Line" value={event.correlatedCommandLine} mono />
+      <Row label="Parent" value={event.correlatedParentImage} mono />
+      <Row label="Logon ID" value={event.correlatedLogonId} mono />
+      <Row
+        label="Sysmon Time"
+        value={event.correlatedSysmonTime ? new Date(event.correlatedSysmonTime).toLocaleString() : ''}
+      />
+    </div>
+  );
+}
+
+export default function PSDetailRow({ event, detections }: { event: PSEnrichedEvent; detections?: Detection[] }) {
   if (event.eventId === 4104) {
     const sb = parseScriptBlock(event);
     if (!sb) {
@@ -51,6 +98,25 @@ export default function PSDetailRow({ event, detections }: { event: WinEvent; de
         <div className="p-4">
           {/* Info bar */}
           <div className="flex flex-wrap items-center gap-3 mb-3 text-[11px] text-gray-400">
+            <CorrelationBadge event={event} />
+            {event.correlatedPid != null && (
+              <span>
+                <span className="text-gray-500">PID:</span>{' '}
+                <span className="font-mono text-gray-300">{event.correlatedPid}</span>
+              </span>
+            )}
+            {event.correlatedProcessName && (
+              <span>
+                <span className="text-gray-500">Process:</span>{' '}
+                <span className="font-mono text-gray-300">{event.correlatedProcessName}</span>
+              </span>
+            )}
+            {event.correlatedUser && (
+              <span>
+                <span className="text-gray-500">User:</span>{' '}
+                <span className="font-mono text-gray-300">{event.correlatedUser}</span>
+              </span>
+            )}
             {sb.scriptBlockId && (
               <span>
                 <span className="text-gray-500">ScriptBlockId:</span>{' '}
@@ -81,14 +147,16 @@ export default function PSDetailRow({ event, detections }: { event: WinEvent; de
 
           {/* Script block text */}
           <SectionLabel>Script Block</SectionLabel>
-          <div className="relative group/cb mt-1">
-            <div className="absolute right-5 top-2 z-10 opacity-0 group-hover/cb:opacity-100 transition-opacity">
-              <CopyIconButton text={sb.scriptBlockText} title="Copy script block" />
+            <div className="relative group/cb mt-1">
+              <div className="absolute right-5 top-2 z-10 opacity-0 group-hover/cb:opacity-100 transition-opacity">
+                <CopyIconButton text={sb.scriptBlockText} title="Copy script block" />
             </div>
             <pre className="p-3 bg-[#161b22] border border-[#21262d] rounded text-[11px] text-gray-200 font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap break-words">
               <HighlightedScript text={sb.scriptBlockText} />
             </pre>
           </div>
+
+          <CorrelatedProcessSection event={event} />
         </div>
       </DetailCard>
     );
@@ -110,6 +178,15 @@ export default function PSDetailRow({ event, detections }: { event: WinEvent; de
       <DetailCard color={suspiciousMatches.length > 0 ? '#f0883e' : '#1f6feb'} raw={event.eventData}>
         <DetectionBlock detections={detections} />
         <div className="p-4">
+          <div className="mb-3 flex flex-wrap items-center gap-3 text-[11px] text-gray-400">
+            <CorrelationBadge event={event} />
+            {event.correlatedPid != null && (
+              <span>
+                <span className="text-gray-500">PID:</span>{' '}
+                <span className="font-mono text-gray-300">{event.correlatedPid}</span>
+              </span>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0">
             <div>
               <SectionLabel>Command Info</SectionLabel>
@@ -136,6 +213,8 @@ export default function PSDetailRow({ event, detections }: { event: WinEvent; de
               )}
             </div>
           </div>
+
+          <CorrelatedProcessSection event={event} />
         </div>
       </DetailCard>
     );

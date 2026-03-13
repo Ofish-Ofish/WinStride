@@ -71,8 +71,8 @@ function isPowerShell(imageName: string): boolean {
   return lower === 'powershell.exe' || lower === 'pwsh.exe';
 }
 
-/** Correlation map type: key is "pid:machineName" → script blocks */
-export type ScriptCorrelationMap = Map<string, CorrelatedScript[]>;
+/** Correlation map type: key is the Sysmon Event 1 id → correlated script blocks */
+export type ScriptCorrelationMap = Map<number, CorrelatedScript[]>;
 
 const INTEGRITY_RANK: Record<string, number> = {
   Low: 0,
@@ -161,8 +161,7 @@ export function buildAggregatedTree(
       childNode.maxIntegrity = higherIntegrity(childNode.maxIntegrity, proc.integrityLevel);
 
       if (psCorrelation && isPowerShell(proc.imageName) && proc.processId) {
-        const key = `${proc.processId}:${event.machineName}`;
-        const scripts = psCorrelation.get(key);
+        const scripts = psCorrelation.get(event.id);
         if (scripts && childNode.scriptBlocks.length < MAX_SCRIPTS) {
           for (const s of scripts) {
             if (childNode.scriptBlocks.length >= MAX_SCRIPTS) break;
